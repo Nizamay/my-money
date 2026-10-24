@@ -39,7 +39,10 @@ function parseSms(text, from = '') {
   const raw = latinDigits(text.trim());
   if (!raw || OTP.test(raw) || NOT_TX.test(raw) && !/(покупк|оплат|списан|purchase|payment|شراء|دفع)/i.test(raw)) return null;
   // drop the balance figure (anb puts "Balance:" mid-message, before Total amount / At / On)
-  const body = raw.replace(new RegExp(CUT.source + '[^\\d\\n]{0,15}' + NUM + '(?:\\s?' + CUR + ')?', 'gi'), ' ');
+  const body = raw.replace(new RegExp(CUT.source + '[^\\d\\n]{0,15}' + NUM + '(?:\\s?' + CUR + ')?', 'gi'), ' ')
+    // card / account / IBAN / invoice numbers are never amounts ("VISA Card:7982", "From:0012", "(2276)")
+    .replace(/(card|iban|account|acc|invoice number|from|to|بطاقة|حساب|карта|счет|счёт)\s*:?\s*[*x\d][*x\d ]*/gi, '$1 ')
+    .replace(/\(\s*\d{4}\s*\)/g, ' ');
   let amount = null, m, note = '';
   // abroad: "Amount:BHD 5 … Total amount:SAR 50.95" — the card's own total wins, the foreign amount goes to the note
   const tot = new RegExp('(?:total amount|total|الإجمالي|المبلغ الإجمالي|итого)(?:\\s+in)?[:\\s]*(?:' + CUR + '[:\\s]*)?' + NUM, 'i');
