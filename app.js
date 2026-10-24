@@ -110,16 +110,25 @@ function parseSms(text, from = '') {
     if (mo >= 1 && mo <= 12 && dd >= 1 && dd <= 31 && d <= new Date(Date.now() + 864e5) && d > new Date(Date.now() - 400 * 864e5)) { date = d; break; }
   }
 
-  // merchant
+  // merchant: taken from the SMS's own labels (At:, From:, Sender:, Provider: …), on one line or many;
+  // a value that is only digits / masked numbers / card brands never names a shop
+  // the labels banks put after a value; a value runs until one of them ("From: UBER * PENDING Card Number: …")
+  const NEXT_LABEL = 'card(?: number)?|account(?: number)?|acc(?: no)?|date|on|amount|total amount|iban|bank|balance|country|exchange rate|fees(?: and vat)?|from|to|at|reference no|service|provider|name|via|sender|merchant';
+  const lbl = names => {
+    const x = raw.match(new RegExp('(?:^|\\s)(?:' + names + ')\\s*:\\s*(.{1,40}?)(?=\\s*(?:\\n|,|;|$)|\\s+(?:' + NEXT_LABEL + ')\\s*:)', 'i'));
+    const v = x ? x[1].trim() : '';
+    return /[A-Za-z؀-ۿ]/.test(v) && !/^(?:mada|visa|master\s*card|apple pay)\b/i.test(v) ? v : '';
+  };
   let merchant = '';
-  if ((m = body.match(/sender[:\s]+([^\n]{2,40})/i))) merchant = m[1];
-  else if ((m = raw.match(/^(.{2,25}?)\s+payments?\b[^]*?provider\s*:\s*([^\n]{2,40})/i))) merchant = m[1].trim() + ' · ' + m[2].trim();
-  else if ((m = body.match(/(?:\bв\b|\bat\b|магазин|merchant|biller|sender|(?<=transfer[^]*)\bto|لدى|عند|المتجر|التاجر|من(?=:))[:\s]+([^,;\n]{2,40}?)(?=[.,;\n]|\s+\d|\s+for\s|\s+[A-Za-z][A-Za-z ]{1,20}:|$)/i))) merchant = m[1];
+  if ((m = raw.match(/^(.{2,25}?)\s+payments?\b[^]*?provider\s*:\s*([^\n]{2,40})/i))) merchant = m[1].trim() + ' · ' + m[2].trim();
+  merchant = merchant || lbl('sender') || lbl('at|merchant|biller|لدى|عند|المتجر|التاجر') || lbl('from|من') || lbl('name')
+    || (/transfer/i.test(raw) ? lbl('to') : '');
+  if (!merchant && (m = body.match(/(?:\bв\b|магазин)\s+([^,;\n]{2,40}?)(?=[.,;\n]|\s+\d|$)/i))) merchant = m[1];
+  if (!merchant && (m = body.match(/\bat\s+([A-Za-z][^,;\n]{1,40}?)(?=[.,;\n]|\s+\d|\s+for\s|$)/i))) merchant = m[1];   // "was used at UBER for SAR"
   if (!merchant && (m = body.match(/\b([A-Z][A-Z0-9*'&\-. ]{3,30})\b/))) merchant = m[1];
+  if (PAYOFF.test(raw)) merchant = PAYOFF_CAT;
   merchant = merchant.replace(new RegExp(CUR, 'ig'), '').replace(/\s+/g, ' ').trim();
-  if (/^[*\d\s.,]+$/.test(merchant)) merchant = '';   // a masked account number or an amount is not a merchant
-  // anb reversal: "From: UBER TRIP" names the shop
-  if (!merchant && (m = raw.match(/(?:^|\n)\s*(?:from|at|merchant)\s*:\s*([A-Za-z؀-ۿ][^\n,]{1,40})/i))) merchant = m[1].trim();
+  if (/^[*\d\s.,:-]+$/.test(merchant)) merchant = '';   // a masked account number or an amount is not a merchant
 
   const hay = (from + ' ' + raw).toLowerCase();
   const src = S.sources.find(s => s.key.split('|').some(k => k.trim() && hay.includes(k.trim().toLowerCase())));
