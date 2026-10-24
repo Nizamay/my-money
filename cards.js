@@ -2,6 +2,12 @@
 /* ---------- credit cards: what was spent this / last month and what is still to pay off ---------- */
 const monthStart = (y, m) => new Date(y, m, 1);
 
+// operations saved before holds were recognised: a PENDING charge and its reversal are not spending
+if (S.tx.some(t => !t.kind && HOLD.test(t.merchant || ''))) {
+  S.tx.forEach(t => { if (!t.kind && HOLD.test(t.merchant || '')) { t.kind = 'hold'; t.category = 'Блокировка (pending)'; } });
+  save();
+}
+
 // payoffs to a card in [a, b); SAB sends both "Payment" and "Credited" for one payoff — same amount within 3 h counts once
 function paidTo(name, a, b) {
   const xs = S.tx.filter(t => isXfer(t) && (t.payTo === name || (!t.payTo && t.source === name)) && new Date(t.date) >= a && new Date(t.date) < b)

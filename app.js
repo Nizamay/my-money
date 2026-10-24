@@ -53,7 +53,27 @@ const PAYOFF_CAT = 'Погашение кредитки';
 const isXfer = t => !!t.transfer || t.category === PAYOFF_CAT;
 // a card statement ("statement has been issued … Amount Due … Due Date") is a bill, not money moving
 const STATEMENT = /statement (?:has been )?issued|كشف حساب|выписка сформирована/i;
-const isInfo = t => t.kind === 'statement';
+// "UBER * PENDING" is a hold the bank releases later — neither the hold nor its reversal is spending
+const HOLD = /pending/i;
+const isInfo = t => t.kind === 'statement' || t.kind === 'hold';
+// well-known shops and services → a suggested category (the user's own rules always win)
+const KNOWN = [
+  [/\bub(?:e)?r\b|careem|bolt|jeeny|taxi/i, 'Такси'],
+  [/hungerstation|talabat|jahez|mrsool|keeta|toyou|chefz|deliveroo/i, 'Доставка еды'],
+  [/\bkfc|mcdonald|hardee|burger|shawarma|pizza|domino|starbucks|dunkin|tim hortons|barn|cafe|coffee|kudu|albaik|americana|restaurant|\bshake/i, 'Кафе и рестораны'],
+  [/lulu|panda|danube|tamimi|carrefour|othaim|farm|nesto|bindawood|supermarket|hypermarket|grocery|meat/i, 'Продукты'],
+  [/noon|amazon|mumzworld|namshi|shein|temu|aliexpress|ikea|jarir|extra\b|sharaf|centrepoint|miniso/i, 'Покупки'],
+  [/landmark|h&m|zara|adidas|nike|max fashion|splash|decathlon|redtag|sun & sand|shoe/i, 'Одежда'],
+  [/zain|stc|mobily|virgin mobile|salam|lebara|du\b|etisalat/i, 'Связь'],
+  [/insurance|shory|tawuniya|bupa|tameeni|medgulf/i, 'Страховка'],
+  [/hotel|booking|airbnb|marriott|hilton|flynas|saudia|flyadeal|airline|emirates|almosafer/i, 'Путешествия'],
+  [/pharmacy|nahdi|al-dawaa|dawaa|hospital|clinic|dental|medical/i, 'Здоровье'],
+  [/aldrees|sasco|petromin|naft|fuel|petrol|bapco|adnoc|enoc/i, 'Топливо'],
+  [/netflix|spotify|apple\.com|icloud|google|youtube|shahid|osn|disney|chatgpt|openai/i, 'Подписки'],
+  [/cinema|vox|muvi|theme|park|bowling|game/i, 'Развлечения'],
+  [/gym|fitness|sport/i, 'Спорт'],
+];
+const guessCat = m => (KNOWN.find(k => k[0].test(m || '')) || [])[1] || '';
 // which credit card a payoff went to: its digits in the SMS (paid from the debit account 0012)
 function cardFor(t) {
   const r = t.raw || '';
@@ -147,7 +167,9 @@ function parseSms(text, from = '') {
     source: src ? src.name : (from || 'Другое'),
     category: rule ? rule.cat : PAYOFF.test(body) ? PAYOFF_CAT : /outgoing transfer|تحويل صادر|исходящий перевод/i.test(body) ? 'Переводы'
       : !REFUND.test(body) && INCOME.test(body) ? (/cashback|кешбэк|кэшбэк/i.test(body) ? 'Кешбэк' : /salary|راتب|зарплат/i.test(body) ? 'Зарплата' : 'Поступления')
-      : /withdraw|\batm\b|cash withdrawal|سحب|صراف|снятие налич|банкомат/i.test(body) ? 'Наличные' : (src && src.cat) || 'Без категории',
+      : /withdraw|\batm\b|cash withdrawal|سحب|صراف|снятие налич|банкомат/i.test(body) ? 'Наличные'
+      : HOLD.test(merchant) ? 'Блокировка (pending)' : guessCat(merchant) || (src && src.cat) || 'Без категории',
+    kind: HOLD.test(merchant) ? 'hold' : undefined,
     note, income: !PAYOFF.test(body) && !REFUND.test(body) && INCOME.test(body), transfer: PAYOFF.test(body), origin: 'sms', raw, h: hash(raw)
   };
 }
@@ -289,7 +311,7 @@ const CATS = [['Продукты', '🛒'], ['Кафе и рестораны', '
   ['Авто', '🚗'], ['Дом', '🏠'], ['Коммунальные', '💡'], ['Интернет', '🌐'], ['Связь', '📱'], ['Здоровье', '💊'], ['Красота', '💇'],
   ['Одежда', '👕'], ['Покупки', '🛍️'], ['Развлечения', '🎬'], ['Спорт', '🏋️'], ['Путешествия', '✈️'], ['Образование', '🎓'],
   ['Дети', '🧸'], ['Подарки', '🎁'], ['Подписки', '🧾'], ['Страховка', '🛡️'], ['Штрафы', '🚨'], ['Госуслуги', '🏛️'], ['Переводы', '💸'], ['Наличные', '💵'],
-  ['Погашение кредитки', '💳'], ['Счёт по кредитке', '🧾'], ['Зарплата', '💰'], ['Кешбэк', '🎉'], ['Поступления', '📥'], ['Без категории', '❓']];
+  ['Погашение кредитки', '💳'], ['Счёт по кредитке', '🧾'], ['Блокировка (pending)', '⏳'], ['Зарплата', '💰'], ['Кешбэк', '🎉'], ['Поступления', '📥'], ['Без категории', '❓']];
 const catIcon = n => ((S.cats || []).find(c => c.name === n) || {}).icon || (CATS.find(c => c[0] === n) || [])[1] || '🏷️';
 const allCats = () => [...new Set(CATS.map(c => c[0]).concat((S.cats || []).map(c => c.name),
   S.tx.map(t => t.category), S.rules.map(r => r.cat), S.sources.map(s => s.cat)).filter(Boolean))];
