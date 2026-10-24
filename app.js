@@ -402,6 +402,9 @@ $('b-exp').onclick = () => {
 
 /* ---------- settings ---------- */
 /* ---------- «Подгрузить»: run the user's Shortcut «История <банк>», which reopens the app with the SMS ---------- */
+// the Shortcut a bank's ⟳ button runs: whatever the user named it in Settings, «История <банк>» by default
+const scName = bank => (S.scNames || {})[bank] || 'История ' + bank;
+
 function renderPull() {
   // one Shortcut per bank: «anb кредитка» and «anb дебетовая» share «История anb»
   const banks = [...new Set(S.sources.map(s => s.name.split(' ')[0]))];
@@ -411,7 +414,7 @@ function renderPull() {
 $('pull').onclick = e => {
   const b = e.target.closest('button'); if (!b) return;
   if (b.dataset.reload) return location.reload();
-  location.href = 'shortcuts://run-shortcut?name=' + encodeURIComponent('История ' + b.dataset.pull);
+  location.href = 'shortcuts://run-shortcut?name=' + encodeURIComponent(scName(b.dataset.pull));
 };
 
 function renderSet() {
@@ -421,7 +424,9 @@ function renderSet() {
   const base = location.href.split('#')[0].split('?')[0];
   $('src-list').innerHTML = S.sources.map((s, i) => `<div class="row"><div style="min-width:0;flex:1">${esc(s.name)}<div class="m">${esc(s.key)} → ${esc(s.cat || '—')}</div>
     <details><summary class="m" style="color:var(--acc)">команда для этого банка</summary>
-    <div class="m">Название команды: <b>История ${esc(s.name.split(' ')[0])}</b><br>Строка для действия Text (в конец — URL Encoded Text):</div>
+    <div class="m">Название команды (как в «Командах», точь-в-точь):</div>
+    <input data-sc="${esc(s.name.split(' ')[0])}" value="${esc(scName(s.name.split(' ')[0]))}">
+    <div class="m">Строка для действия Text (в конец — URL Encoded Text):</div>
     <input readonly value="${esc(base)}#from=${encodeURIComponent(s.name.split(' ')[0])}&sms=" onclick="this.select()"></details></div>
     <button class="del" data-ds="${i}">×</button></div>`).join('') || '<p class="mut">Нет источников</p>';
   $('rule-list').innerHTML = S.rules.map((r, i) => `<div class="row"><div>${esc(r.key)}<div class="m">→ ${esc(r.cat)}</div></div><button class="del" data-dr="${i}">×</button></div>`).join('') || '<p class="mut">Нет правил</p>';
@@ -433,6 +438,12 @@ $('n-add').onclick = () => { const name = $('n-name').value.trim(), key = $('n-k
 $('r-add').onclick = () => { const key = $('r-key').value.trim(), cat = $('r-cat').value.trim(); if (!key || !cat) return;
   S.rules.push({ key, cat }); save(); $('r-key').value = $('r-cat').value = ''; renderSet(); };
 $('src-list').onclick = e => { const i = e.target.dataset.ds; if (i != null) { S.sources.splice(+i, 1); save(); renderSet(); } };
+$('src-list').addEventListener('change', e => {
+  const b = e.target.dataset.sc; if (!b) return;
+  S.scNames = S.scNames || {}; S.scNames[b] = e.target.value.trim(); save();
+  document.querySelectorAll(`[data-sc="${b}"]`).forEach(i => { i.value = e.target.value; });
+  toast('Кнопка ⟳ ' + b + ' запускает «' + scName(b) + '»');
+});
 $('cat-list').onclick = e => {
   const i = e.target.dataset.dc; if (i == null) return;
   const c = S.cats[+i]; if (!confirm(`Удалить категорию «${c.name}»?`)) return;
