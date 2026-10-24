@@ -354,7 +354,18 @@ function toast(msg) {
 function intake() {
   if (!location.hash.includes('sms=')) return;
   const p = new URLSearchParams(location.hash.slice(1));
-  const r = addSms(p.get('sms') || '', p.get('from') || '');
+  const from = p.get('from') || '', text = p.get('sms') || '';
+  // many SMS at once (Shortcuts "Find Messages" → joined with ###): show them for review
+  const parts = text.split(/\n?\s*#{3,}\s*\n?/).map(x => x.trim()).filter(Boolean);
+  if (parts.length > 1) {
+    history.replaceState(null, '', location.pathname + location.search);
+    document.querySelector('nav [data-t="add"]').click();
+    review(parts.map(x => parseSms(x, from)).filter(Boolean));
+    $('review').scrollIntoView();
+    toast(`Получено SMS: ${parts.length}`);
+    return;
+  }
+  const r = addSms(text, from);
   toast(r.ok ? `${r.t.income ? 'Доход' : 'Расход'} ${fmt(r.t.amount)} · ${r.t.source}` : 'SMS: ' + r.msg);
   history.replaceState(null, '', location.pathname + location.search);
   render();
@@ -362,5 +373,6 @@ function intake() {
 window.addEventListener('hashchange', intake);
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js');
-renderSet(); render(); intake();
+renderSet(); render();
+window.addEventListener('load', intake);   // after scan.js (review) has loaded
 window.addEventListener('resize', render);
