@@ -59,8 +59,7 @@ const isInfo = t => t.kind === 'statement' || t.kind === 'hold';
 // well-known shops and services → a suggested category (the user's own rules always win)
 const KNOWN = [
   [/\bub(?:e)?r\b|careem|bolt|jeeny|taxi/i, 'Такси'],
-  [/hungerstation|talabat|jahez|mrsool|keeta|toyou|chefz|deliveroo/i, 'Доставка еды'],
-  [/\bkfc|mcdonald|hardee|burger|shawarma|pizza|domino|starbucks|dunkin|tim hortons|barn|cafe|coffee|kudu|albaik|americana|restaurant|\bshake/i, 'Кафе и рестораны'],
+  [/hungerstation|talabat|jahez|mrsool|keeta|toyou|chefz|deliveroo|\bkfc|mcdonald|hardee|burger|shawarma|pizza|domino|starbucks|dunkin|tim hortons|barn|cafe|coffee|kudu|albaik|americana|restaurant|\bshake/i, 'Кафе и рестораны'],
   [/lulu|panda|danube|tamimi|carrefour|othaim|farm|nesto|bindawood|supermarket|hypermarket|grocery|meat/i, 'Продукты'],
   [/noon|amazon|mumzworld|namshi|shein|temu|aliexpress|ikea|jarir|extra\b|sharaf|centrepoint|miniso/i, 'Покупки'],
   [/landmark|h&m|zara|adidas|nike|max fashion|splash|decathlon|redtag|sun & sand|shoe/i, 'Одежда'],
@@ -73,6 +72,12 @@ const KNOWN = [
   [/cinema|vox|muvi|theme|park|bowling|game/i, 'Развлечения'],
   [/gym|fitness|sport/i, 'Спорт'],
 ];
+// food delivery saved earlier under «Доставка еды» moves to cafes, rules too
+if (S.tx.some(t => t.category === 'Доставка еды') || S.rules.some(r => r.cat === 'Доставка еды')) {
+  S.tx.forEach(t => { if (t.category === 'Доставка еды') t.category = 'Кафе и рестораны'; });
+  S.rules.forEach(r => { if (r.cat === 'Доставка еды') r.cat = 'Кафе и рестораны'; });
+  try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {}
+}
 const guessCat = m => (KNOWN.find(k => k[0].test(m || '')) || [])[1] || '';
 // which credit card a payoff went to: its digits in the SMS (paid from the debit account 0012)
 function cardFor(t) {
