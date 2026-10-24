@@ -346,7 +346,13 @@ $('pull').onclick = e => {
 
 function renderSet() {
   renderPull();
-  $('src-list').innerHTML = S.sources.map((s, i) => `<div class="row"><div>${esc(s.name)}<div class="m">${esc(s.key)} → ${esc(s.cat || '—')}</div></div><button class="del" data-ds="${i}">×</button></div>`).join('') || '<p class="mut">Нет источников</p>';
+  // each bank shows what its Shortcut must be called and the exact Text line to paste into it
+  const base = location.href.split('#')[0].split('?')[0];
+  $('src-list').innerHTML = S.sources.map((s, i) => `<div class="row"><div style="min-width:0;flex:1">${esc(s.name)}<div class="m">${esc(s.key)} → ${esc(s.cat || '—')}</div>
+    <details><summary class="m" style="color:var(--acc)">команда для этого банка</summary>
+    <div class="m">Название команды: <b>История ${esc(s.name)}</b><br>Строка для действия Text (в конец — URL Encoded Text):</div>
+    <input readonly value="${esc(base)}#from=${encodeURIComponent(s.name)}&sms=" onclick="this.select()"></details></div>
+    <button class="del" data-ds="${i}">×</button></div>`).join('') || '<p class="mut">Нет источников</p>';
   $('rule-list').innerHTML = S.rules.map((r, i) => `<div class="row"><div>${esc(r.key)}<div class="m">→ ${esc(r.cat)}</div></div><button class="del" data-dr="${i}">×</button></div>`).join('') || '<p class="mut">Нет правил</p>';
   $('cur').value = S.cur; $('only-known').checked = S.onlyKnown;
   $('hook').value = location.href.split('#')[0] + '#from=ОТПРАВИТЕЛЬ&sms=ТЕКСТ';
