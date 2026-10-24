@@ -108,7 +108,9 @@ function parseSms(text, from = '') {
   else if ((m = body.match(/(?:\bв\b|\bat\b|магазин|merchant|biller|sender|(?<=transfer[^]*)\bto|لدى|عند|المتجر|التاجر|من(?=:))[:\s]+([^,;\n]{2,40}?)(?=[.,;\n]|\s+\d|\s+for\s|$)/i))) merchant = m[1];
   if (!merchant && (m = body.match(/\b([A-Z][A-Z0-9*'&\-. ]{3,30})\b/))) merchant = m[1];
   merchant = merchant.replace(new RegExp(CUR, 'ig'), '').replace(/\s+/g, ' ').trim();
-  if (/^[*\d\s]+$/.test(merchant)) merchant = '';   // a masked account number is not a merchant
+  if (/^[*\d\s.,]+$/.test(merchant)) merchant = '';   // a masked account number or an amount is not a merchant
+  // anb reversal: "From: UBER TRIP" names the shop
+  if (!merchant && (m = raw.match(/(?:^|\n)\s*(?:from|at|merchant)\s*:\s*([A-Za-z؀-ۿ][^\n,]{1,40})/i))) merchant = m[1].trim();
 
   const hay = (from + ' ' + raw).toLowerCase();
   const src = S.sources.find(s => s.key.split('|').some(k => k.trim() && hay.includes(k.trim().toLowerCase())));
