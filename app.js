@@ -26,7 +26,7 @@ const hash = s => { let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33
 // 1 250,50 · 1,250.00 · 45.5
 const NUM = '(\\d{1,3}(?:,\\d{3})+(?=\\.\\d)|\\d{1,3}(?:[ \\u00a0\\u202f]\\d{3})+|\\d+)(?:[.,](\\d{1,2}))?';
 const CUR = '(?:sar|ر\\.?\\s?س|ريال|رس|₽|руб\\.?|р\\.|р\\b|rub|rur|\\$|usd|€|eur|₸|kzt|тг|uah|₴|грн|byn|gel|₾|amd|uzs|сум|try|₺|aed)';
-const INCOME = /(зачислен|пополнен|поступлен|перевод от|credited|cashback|кешбэк|кэшбэк|deposit|incoming|received|salary|إيداع|ايداع|وارد|راتب)/i;
+const INCOME = /(credit transfer|зачислен|пополнен|поступлен|перевод от|credited|cashback|кешбэк|кэшбэк|deposit|incoming|received|salary|إيداع|ايداع|وارد|راتب)/i;
 // a refund / reversal cancels a purchase: stored as a negative expense so totals net out
 const REFUND = /(возврат|refund|revers|استرداد|مسترد)/i;
 const NOT_TX = /(код|code|пароль|password|не сообщайте)/i;
@@ -60,7 +60,8 @@ function parseSms(text, from = '') {
   // date inside SMS: 24.10.26 14:05 · 24/10/2026 · 2026-10-24 14:05
   let date = new Date();
   const cands = [...raw.matchAll(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[ T]+(\d{1,2}):(\d{2}))?/g)].map(m => [+m[1], +m[2], +m[3], m[4], m[5]])
-    .concat([...raw.matchAll(/(?<![\d.,])(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?(?![\d,])(?:\s+(\d{1,2}):(\d{2}))?/g)].filter(m => m[3] || m[4]).map(m => [m[3] ? +m[3] : date.getFullYear(), +m[2], +m[1], m[4], m[5]]));
+    .concat([...raw.matchAll(/(?<![\d.,])(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?(?![\d,])(?:\s+(\d{1,2}):(\d{2}))?/g)].filter(m => m[3] || m[4]).flatMap(m => [[m[3] ? +m[3] : date.getFullYear(), +m[2], +m[1], m[4], m[5]]]
+      .concat(m[3] && m[3].length === 2 ? [[+m[1], +m[2], +m[3], m[4], m[5]]] : [])));
   for (let [y, mo, dd, hh, mi] of cands) {
     if (y < 100) y += 2000;
     const d = new Date(y, mo - 1, dd, hh ? +hh : 12, mi ? +mi : 0);
