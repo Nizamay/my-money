@@ -1,0 +1,69 @@
+'use strict';
+/* ---------- savings: funds (копилки), each topped up / withdrawn by hand ---------- */
+S.sav = S.sav || [];
+const bal = f => f.ops.reduce((s, o) => s + o.amount, 0);
+let openFund = null;
+
+function renderSav() {
+  const funds = S.sav, total = funds.reduce((s, f) => s + bal(f), 0);
+  $('v-total').textContent = fmt(total);
+
+  // share of each fund
+  const arr = funds.map((f, i) => [f, bal(f), COLORS[i % COLORS.length]]).filter(x => x[1] > 0);
+  const sum = arr.reduce((s, x) => s + x[1], 0);
+  let ang = -Math.PI / 2, d = '';
+  const p = (r, t) => (100 + r * Math.cos(t)).toFixed(2) + ' ' + (100 + r * Math.sin(t)).toFixed(2);
+  arr.forEach(([f, v, c]) => {
+    const fr = v / sum, a2 = ang + fr * Math.PI * 2, big = fr > .5 ? 1 : 0;
+    d += fr >= .9999 ? `<circle cx="100" cy="100" r="70" fill="none" stroke="${c}" stroke-width="40"/>`
+      : `<path data-f="${f.id}" d="M${p(90, ang)} A90 90 0 ${big} 1 ${p(90, a2)} L${p(50, a2)} A50 50 0 ${big} 0 ${p(50, ang)}Z" fill="${c}"/>`;
+    ang = a2;
+  });
+  d += `<text x="100" y="104" text-anchor="middle" style="font-size:15px;fill:var(--fg);font-weight:600">${sum ? fmt(sum) : 'пусто'}</text>`;
+  $('v-donut').innerHTML = d;
+  $('v-legend').innerHTML = arr.map(([f, v, c]) => `<div data-f="${f.id}"><i style="background:${c}"></i>${esc(f.name)}<span class="mut">${Math.round(v / sum * 100)}%</span><span class="v">${fmt(v)}</span></div>`).join('');
+
+  $('v-list').innerHTML = funds.length ? funds.map(f => {
+    const b = bal(f), pct = f.goal ? Math.min(100, Math.round(b / f.goal * 100)) : null;
+    return `<div class="row"><div style="flex:1"><div data-f="${f.id}" style="cursor:pointer">${esc(f.name)}</div>
+      <div class="m">${fmt(b)}${f.goal ? ` из ${fmt(f.goal)} · ${pct}%` : ''}</div>
+      ${f.goal ? `<div style="height:5px;background:var(--line);border-radius:3px;margin-top:4px"><div style="width:${pct}%;height:5px;background:var(--acc);border-radius:3px"></div></div>` : ''}</div>
+      <button class="del" style="color:#16a34a" data-plus="${f.id}">＋</button><button class="del" data-minus="${f.id}">－</button></div>`;
+  }).join('') : '<p class="mut">Создайте первую копилку ниже</p>';
+
+  const f = funds.find(x => x.id === openFund);
+  $('v-hist').style.display = f ? '' : 'none';
+  if (f) $('v-hist').innerHTML = `<h3>${esc(f.name)} — история</h3>` +
+    (f.ops.slice().reverse().map(o => `<div class="row"><div>${esc(o.note || (o.amount > 0 ? 'Пополнение' : 'Снятие'))}<div class="m">${new Date(o.date).toLocaleDateString('ru-RU')}</div></div>
+      <b class="${o.amount > 0 ? 'inc' : ''}">${o.amount > 0 ? '+' : '−'}${fmt(Math.abs(o.amount))}</b><button class="del" data-dop="${o.id}">×</button></div>`).join('') || '<p class="mut">Операций нет</p>') +
+    `<div class="grid2"><button class="btn ghost" data-ren="${f.id}">Переименовать / цель</button><button class="btn ghost" style="color:var(--bad);border-color:var(--bad)" data-delf="${f.id}">Удалить копилку</button></div>`;
+}
+
+function move(id, sign) {
+  const f = S.sav.find(x => x.id === id); if (!f) return;
+  const v = parseFloat(String(prompt(`${sign > 0 ? 'Пополнить' : 'Снять из'} «${f.name}», сумма:`) || '').replace(',', '.').replace(/\s/g, ''));
+  if (!(v > 0)) return;
+  const note = prompt('Комментарий (необязательно)') || '';
+  f.ops.push({ id: uid(), date: new Date().toISOString(), amount: sign * v, note });
+  save(); renderSav();
+}
+
+$('v-add').onclick = () => {
+  const name = $('v-name').value.trim(); if (!name) return alert('Название копилки');
+  const goal = parseFloat($('v-goal').value) || 0;
+  S.sav.push({ id: uid(), name, goal, ops: [] }); save();
+  $('v-name').value = $('v-goal').value = ''; renderSav();
+};
+document.getElementById('t-sav').onclick = e => {
+  const t = e.target.closest('[data-plus],[data-minus],[data-f],[data-dop],[data-ren],[data-delf]'); if (!t) return;
+  const ds = t.dataset;
+  if (ds.plus) move(ds.plus, 1);
+  else if (ds.minus) move(ds.minus, -1);
+  else if (ds.f) { openFund = openFund === ds.f ? null : ds.f; renderSav(); }
+  else if (ds.dop) { const f = S.sav.find(x => x.id === openFund); if (confirm('Удалить запись?')) { f.ops = f.ops.filter(o => o.id !== ds.dop); save(); renderSav(); } }
+  else if (ds.ren) { const f = S.sav.find(x => x.id === ds.ren); const n = prompt('Название', f.name); if (n) f.name = n.trim();
+    const g = prompt('Цель (пусто — без цели)', f.goal || ''); f.goal = parseFloat(g) || 0; save(); renderSav(); }
+  else if (ds.delf) { const f = S.sav.find(x => x.id === ds.delf); if (confirm(`Удалить копилку «${f.name}» со всей историей?`)) { S.sav = S.sav.filter(x => x !== f); openFund = null; save(); renderSav(); } }
+};
+document.querySelector('nav').addEventListener('click', e => { const b = e.target.closest('button'); if (b && b.dataset.t === 'sav') renderSav(); });
+renderSav();

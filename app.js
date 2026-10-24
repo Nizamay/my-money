@@ -1,7 +1,7 @@
 'use strict';
 /* ---------- storage ---------- */
 const KEY = 'mymoney.v1';
-const DEF = { tx: [], sources: [], rules: [], cur: '₽', onlyKnown: false };
+const DEF = { tx: [], sources: [], rules: [], sav: [], cur: '₽', onlyKnown: false };
 let S;
 try { S = Object.assign({}, DEF, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { S = Object.assign({}, DEF); }
 // first run: the two banks the SMS come from, riyals
@@ -70,9 +70,11 @@ function parseSms(text, from = '') {
 
   // merchant
   let merchant = '';
-  if ((m = body.match(/(?:\bв\b|\bat\b|магазин|merchant|biller|لدى|عند|المتجر|التاجر|من(?=:))[:\s]+([^,;\n]{2,40}?)(?=[.,;\n]|\s+\d|\s+for\s|$)/i))) merchant = m[1];
+  if ((m = body.match(/sender[:\s]+([^\n]{2,40})/i))) merchant = m[1];
+  else if ((m = body.match(/(?:\bв\b|\bat\b|магазин|merchant|biller|sender|(?<=transfer[^]*)\bto|لدى|عند|المتجر|التاجر|من(?=:))[:\s]+([^,;\n]{2,40}?)(?=[.,;\n]|\s+\d|\s+for\s|$)/i))) merchant = m[1];
   if (!merchant && (m = body.match(/\b([A-Z][A-Z0-9*'&\-. ]{3,30})\b/))) merchant = m[1];
   merchant = merchant.replace(new RegExp(CUR, 'ig'), '').replace(/\s+/g, ' ').trim();
+  if (/^[*\d\s]+$/.test(merchant)) merchant = '';   // a masked account number is not a merchant
 
   const hay = (from + ' ' + raw).toLowerCase();
   const src = S.sources.find(s => s.key.split('|').some(k => k.trim() && hay.includes(k.trim().toLowerCase())));
@@ -82,15 +84,17 @@ function parseSms(text, from = '') {
   return {
     id: uid(), date: date.toISOString(), amount, merchant,
     source: src ? src.name : (from || 'Другое'),
-    category: rule ? rule.cat : (src && src.cat) || 'Без категории',
+    category: rule ? rule.cat : /outgoing transfer|تحويل صادر|исходящий перевод/i.test(body) ? 'Переводы' : (src && src.cat) || 'Без категории',
     note, income: !REFUND.test(body) && INCOME.test(body), origin: 'sms', raw, h: hash(raw)
   };
 }
 
+const isDup = t => S.tx.some(x => x.h === t.h || (x.origin === 'sms' && x.amount === t.amount && x.date.slice(0, 16) === t.date.slice(0, 16)));
+
 function addSms(text, from) {
   const t = parseSms(text, from);
   if (!t) return { ok: false, msg: 'не похоже на трату' };
-  if (S.tx.some(x => x.h === t.h)) return { ok: false, msg: 'уже есть' };
+  if (isDup(t)) return { ok: false, msg: 'уже есть' };
   S.tx.push(t); save();
   return { ok: true, t };
 }

@@ -97,12 +97,36 @@ svg text{fill:var(--mut);font-size:10px}
     <button class="btn" id="a-save">Сохранить</button>
   </div>
   <div class="card">
+    <h3>Скриншоты SMS</h3>
+    <p class="mut">Выберите один или несколько скриншотов переписки с банком — текст распознаётся прямо на телефоне. Первый раз загружается модуль распознавания (~10 МБ).</p>
+    <label class="mut">Банк на скриншотах</label><select id="o-src"></select>
+    <input type="file" id="o-file" accept="image/*" multiple>
+    <div id="o-status" class="mut"></div>
+  </div>
+  <div class="card" id="review" style="display:none"></div>
+  <div class="card">
     <h3>Вставить SMS</h3>
     <p class="mut">Одно или несколько SMS (разделяйте пустой строкой). Первая строка вида <code>От: Отправитель</code> — необязательна.</p>
     <textarea id="s-text"></textarea>
     <button class="btn" id="s-parse">Разобрать</button>
     <div id="s-out"></div>
   </div>
+</section>
+
+<!-- ===== SAVINGS ===== -->
+<section class="tab" id="t-sav">
+  <div class="kpis" style="grid-template-columns:1fr"><div class="kpi"><small>Всего накоплено</small><b id="v-total">0</b></div></div>
+  <div class="card">
+    <svg id="v-donut" viewBox="0 0 200 200" width="100%" height="200"></svg>
+    <div class="legend" id="v-legend"></div>
+  </div>
+  <div class="card"><h3>Копилки</h3><div id="v-list"></div></div>
+  <div class="card">
+    <h3>Новая копилка</h3>
+    <div class="grid2"><input id="v-name" placeholder="Подушка безопасности"><input id="v-goal" type="number" inputmode="decimal" placeholder="Цель (необязательно)"></div>
+    <button class="btn ghost" id="v-add">Создать</button>
+  </div>
+  <div class="card" id="v-hist" style="display:none"></div>
 </section>
 
 <!-- ===== IMPORT ===== -->
@@ -159,10 +183,13 @@ svg text{fill:var(--mut);font-size:10px}
 <nav>
   <button data-t="stats" class="on"><span>📊</span>Статистика</button>
   <button data-t="add"><span>➕</span>Добавить</button>
+  <button data-t="sav"><span>🏦</span>Накопления</button>
   <button data-t="import"><span>📥</span>Импорт</button>
   <button data-t="set"><span>⚙️</span>Настройки</button>
 </nav>
 
 <script src="app.js"></script>
+<script src="scan.js"></script>
+<script src="savings.js"></script>
 </body>
 </html>
