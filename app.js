@@ -1,7 +1,7 @@
 'use strict';
 /* ---------- storage ---------- */
 const KEY = 'mymoney.v1';
-const DEF = { tx: [], sources: [], rules: [], sav: [], cur: '₽', onlyKnown: false };
+const DEF = { tx: [], sources: [], rules: [], sav: [], cats: [], cur: '₽', onlyKnown: false };
 let S;
 try { S = Object.assign({}, DEF, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { S = Object.assign({}, DEF); }
 // first run: the two banks the SMS come from, riyals
@@ -231,7 +231,7 @@ function render() {
   });
   d += `<text x="100" y="104" text-anchor="middle" style="font-size:15px;fill:var(--fg);font-weight:600">${total ? fmt(total) : 'нет данных'}</text>`;
   $('donut').innerHTML = d;
-  $('legend').innerHTML = arr.map(([k, v], i) => `<div data-k="${esc(k)}" style="opacity:${st.fKey && st.fKey !== k ? .4 : 1}"><i style="background:${COLORS[i]}"></i>${esc(k)}<span class="mut">${Math.round(v / total * 100)}%</span><span class="v">${fmt(v)}</span></div>`).join('');
+  $('legend').innerHTML = arr.map(([k, v], i) => `<div data-k="${esc(k)}" style="opacity:${st.fKey && st.fKey !== k ? .4 : 1}"><i style="background:${COLORS[i]}"></i>${st.split === 'category' ? catIcon(k) + ' ' : ''}${esc(k)}<span class="mut">${Math.round(v / total * 100)}%</span><span class="v">${fmt(v)}</span></div>`).join('');
 
   // list
   let f = '';
@@ -241,7 +241,7 @@ function render() {
   const list = S.tx.filter(t => { const dd = new Date(t.date); return dd >= a && dd < b; })
     .filter(t => inBucket(t) && (!st.fKey || t[st.split] === st.fKey))
     .sort((x, y) => y.date.localeCompare(x.date)).slice(0, 300);
-  $('list').innerHTML = list.length ? list.map(t => `<div class="row"><div><div>${esc(t.merchant || t.note || t.category)}</div>
+  $('list').innerHTML = list.length ? list.map(t => `<div class="row"><div><div>${catIcon(t.category)} ${esc(t.merchant || t.note || t.category)}</div>
     <div class="m">${new Date(t.date).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ${esc(t.source)}${t.merchant && t.note ? " · " + esc(t.note) : ""} ·
     <select data-cat="${t.id}" style="width:auto;padding:2px;margin:0;font-size:12px">${catOptions(t.category)}</select></div></div>
     <div class="amt ${t.income ? 'inc' : ''}">${t.income || t.amount < 0 ? '+' : '−'}${fmt(Math.abs(t.amount))}</div><button class="del" data-del="${t.id}">×</button></div>`).join('')
@@ -252,9 +252,29 @@ function render() {
   $('dl-cat').innerHTML = cats.map(c => `<option value="${esc(c)}">`).join('');
   $('dl-src').innerHTML = srcs.map(c => `<option value="${esc(c)}">`).join('');
 }
-const allCats = () => [...new Set(['Продукты', 'Кафе', 'Транспорт', 'Дом', 'Здоровье', 'Одежда', 'Развлечения', 'Связь', 'Без категории']
-  .concat(S.tx.map(t => t.category), S.rules.map(r => r.cat), S.sources.map(s => s.cat)).filter(Boolean))];
-const catOptions = cur => allCats().map(c => `<option${c === cur ? ' selected' : ''}>${esc(c)}</option>`).join('') + '<option value="__new">+ новая…</option>';
+// the standard list; the user's own categories (S.cats) come after it
+const CATS = [['Продукты', '🛒'], ['Кафе и рестораны', '☕'], ['Доставка еды', '🍔'], ['Такси', '🚕'], ['Транспорт', '🚌'], ['Топливо', '⛽'],
+  ['Авто', '🚗'], ['Дом', '🏠'], ['Коммунальные', '💡'], ['Интернет', '🌐'], ['Связь', '📱'], ['Здоровье', '💊'], ['Красота', '💇'],
+  ['Одежда', '👕'], ['Покупки', '🛍️'], ['Развлечения', '🎬'], ['Спорт', '🏋️'], ['Путешествия', '✈️'], ['Образование', '🎓'],
+  ['Дети', '🧸'], ['Подарки', '🎁'], ['Подписки', '🧾'], ['Страховка', '🛡️'], ['Переводы', '💸'], ['Наличные', '💵'],
+  ['Погашение кредитки', '💳'], ['Зарплата', '💰'], ['Кешбэк', '🎉'], ['Поступления', '📥'], ['Без категории', '❓']];
+const catIcon = n => ((S.cats || []).find(c => c.name === n) || {}).icon || (CATS.find(c => c[0] === n) || [])[1] || '🏷️';
+const allCats = () => [...new Set(CATS.map(c => c[0]).concat((S.cats || []).map(c => c.name),
+  S.tx.map(t => t.category), S.rules.map(r => r.cat), S.sources.map(s => s.cat)).filter(Boolean))];
+const catOptions = (cur, blank) => (blank ? `<option value="">${esc(blank)}</option>` : '')
+  + allCats().map(c => `<option value="${esc(c)}"${c === cur ? ' selected' : ''}>${catIcon(c)} ${esc(c)}</option>`).join('')
+  + '<option value="__new">＋ Новая категория…</option>';
+function newCat() {
+  const name = (prompt('Название новой категории') || '').trim(); if (!name) return '';
+  const icon = (prompt('Иконка (эмодзи), можно оставить пустым', '🏷️') || '🏷️').trim();
+  S.cats = S.cats || []; if (!S.cats.some(c => c.name === name)) S.cats.push({ name, icon }); save();
+  return name;
+}
+// any category <select>: "＋ Новая…" creates one and selects it
+document.addEventListener('change', e => {
+  const s = e.target; if (s.tagName !== 'SELECT' || s.value !== '__new' || s.dataset.cat) return;
+  const n = newCat(); s.innerHTML = catOptions(n, s.dataset.blank); s.value = n;
+}, true);
 
 /* ---------- events: stats ---------- */
 document.querySelector('nav').onclick = e => {
@@ -280,7 +300,7 @@ $('filters').onclick = e => { const c = e.target.dataset.clr; if (c === 'b') st.
 $('list').onclick = e => { const id = e.target.dataset.del; if (id && confirm('Удалить операцию?')) { S.tx = S.tx.filter(t => t.id !== id); save(); render(); } };
 $('list').onchange = e => {
   const id = e.target.dataset.cat; if (!id) return;
-  let c = e.target.value; if (c === '__new') { c = prompt('Новая категория'); if (!c) return render(); }
+  let c = e.target.value; if (c === '__new') { c = newCat(); if (!c) return render(); }
   const t = S.tx.find(x => x.id === id); t.category = c;
   if (c === PAYOFF_CAT) { t.income = false; t.payTo = cardFor(t) || askCard(); }
   if (t.merchant && confirm(`Всегда относить «${t.merchant}» к «${c}»?`)) {

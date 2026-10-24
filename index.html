@@ -46,12 +46,13 @@ svg text{fill:var(--mut);font-size:10px}
 </style>
 </head>
 <body>
-<header>Мои деньги <small style="font-size:11px;color:var(--mut);font-weight:400">v14</small></header>
+<header>Мои деньги <small style="font-size:11px;color:var(--mut);font-weight:400">v15</small></header>
 <main>
 
 <!-- ===== STATS ===== -->
 <section class="tab on" id="t-stats">
   <div class="seg" id="pull" style="margin:6px 0"></div>
+  <div class="card" id="bk-warn" style="display:none;border:2px solid #f59e0b"></div>
   <div class="card" id="credit" style="display:none"></div>
   <div class="kpis">
     <div class="kpi"><small>Сегодня</small><b id="k-day">0</b></div>
@@ -95,7 +96,7 @@ svg text{fill:var(--mut);font-size:10px}
       <div><label class="mut">Дата</label><input id="a-date" type="date"></div>
       <div><label class="mut">Источник</label><input id="a-src" list="dl-src" placeholder="Наличные"></div>
     </div>
-    <label class="mut">Категория</label><input id="a-cat" list="dl-cat" placeholder="Продукты">
+    <label class="mut">Категория</label><select id="a-cat" data-blank="— категория —"></select>
     <label class="mut">Комментарий</label><input id="a-note">
     <button class="btn" id="a-save">Сохранить</button>
   </div>
@@ -143,8 +144,12 @@ svg text{fill:var(--mut);font-size:10px}
   </div>
   <div class="card">
     <h3>Резервная копия</h3>
-    <p class="mut">Данные хранятся только на этом телефоне.</p>
-    <button class="btn ghost" id="b-exp">Скачать всё в CSV</button>
+    <p class="mut">Данные живут только в Safari этого телефона. Если очистить данные Safari или удалить иконку — они пропадут.
+    Сохраняйте копию в «Файлы» (iCloud Drive) — из неё всё восстанавливается целиком.</p>
+    <div class="mut" id="bk-last"></div>
+    <button class="btn" id="bk-save">💾 Сохранить копию в Файлы</button>
+    <label class="btn ghost" style="display:block;text-align:center;box-sizing:border-box">📂 Восстановить из копии<input type="file" id="bk-load" accept=".json,application/json" style="display:none"></label>
+    <button class="btn ghost" id="b-exp">Таблица CSV (для Excel)</button>
   </div>
 </section>
 
@@ -191,9 +196,10 @@ svg text{fill:var(--mut);font-size:10px}
   <button data-t="set"><span>⚙️</span>Настройки</button>
 </nav>
 
-<script src="app.js?v=14"></script>
-<script src="scan.js?v=14"></script>
-<script src="savings.js?v=14"></script>
-<script src="cards.js?v=14"></script>
+<script src="app.js?v=15"></script>
+<script src="scan.js?v=15"></script>
+<script src="savings.js?v=15"></script>
+<script src="cards.js?v=15"></script>
+<script src="backup.js?v=15"></script>
 </body>
 </html>
