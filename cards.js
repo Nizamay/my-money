@@ -2,12 +2,21 @@
 /* ---------- credit cards: what was spent this / last month and what is still to pay off ---------- */
 const monthStart = (y, m) => new Date(y, m, 1);
 
+// payoffs to a card in [a, b); SAB sends both "Payment" and "Credited" for one payoff — same amount within 3 h counts once
+function paidTo(name, a, b) {
+  const xs = S.tx.filter(t => isXfer(t) && (t.payTo === name || (!t.payTo && t.source === name)) && new Date(t.date) >= a && new Date(t.date) < b)
+    .sort((x, y) => x.date.localeCompare(y.date));
+  let sum = 0; const seen = [];
+  xs.forEach(t => { const tm = +new Date(t.date); if (seen.some(s => s.a === t.amount && Math.abs(s.t - tm) < 3 * 36e5)) return; seen.push({ a: t.amount, t: tm }); sum += t.amount; });
+  return sum;
+}
+
 function cardMonth(name, a, b) {
   const inP = t => new Date(t.date) >= a && new Date(t.date) < b;
   const own = S.tx.filter(t => t.source === name && inP(t));
-  const spent = own.filter(t => !t.income && !isXfer(t)).reduce((s, t) => s + t.amount, 0);   // refunds are negative already
+  const spent = own.filter(t => !t.income && !isXfer(t) && !isInfo(t)).reduce((s, t) => s + t.amount, 0);   // refunds are negative already
   // payoffs usually leave the debit account 0012, so they are found by where they went
-  const paid = S.tx.filter(t => inP(t) && isXfer(t) && (t.payTo === name || (!t.payTo && t.source === name))).reduce((s, t) => s + t.amount, 0);
+  const paid = paidTo(name, a, b);
   const back = own.filter(t => t.income && !isXfer(t)).reduce((s, t) => s + t.amount, 0);                     // cashback lands on the card
   return { spent, paid, back };
 }
@@ -20,11 +29,14 @@ function renderCredit() {
   const mName = d => d.toLocaleDateString('ru-RU', { month: 'long' });
   box.innerHTML = '<h3>Кредитки к погашению</h3>' + cards.map(c => {
     const p = cardMonth(c.name, prev, cur), m = cardMonth(c.name, cur, next);
-    // last month's bill is paid off by payments made last month or this month
-    const left = Math.max(0, p.spent - p.back - p.paid - m.paid);
+    // the bank's own statement wins: amount due minus what was paid since it was issued
+    const st = S.tx.filter(t => isInfo(t) && (t.payTo || t.source) === c.name).sort((x, y) => y.date.localeCompare(x.date))[0];
+    const stPaid = st ? paidTo(c.name, new Date(+new Date(st.date) - 3 * 864e5), new Date(8.64e15)) : 0;
+    const left = st ? Math.max(0, st.amount - stPaid) : Math.max(0, p.spent - p.back - p.paid - m.paid);
+    const stLine = st ? `<div class="m">🧾 счёт банка: ${fmt(st.amount)}${st.due ? ', оплатить до ' + new Date(st.due + 'T12:00').toLocaleDateString('ru-RU') : ''} · внесено ${fmt(stPaid)}</div>` : '';
     return `<div class="row" style="align-items:flex-start"><div style="flex:1"><b>${esc(c.name)}</b>
       <div class="m">${mName(prev)}: потрачено ${fmt(p.spent)}${p.back ? `, кешбэк ${fmt(p.back)}` : ''} · погашено ${fmt(p.paid + m.paid)}</div>
-      <div class="m">${mName(cur)}: потрачено ${fmt(m.spent)} — к оплате в следующем месяце</div></div>
+      <div class="m">${mName(cur)}: потрачено ${fmt(m.spent)} — к оплате в следующем месяце</div>${stLine}</div>
       <div style="text-align:right"><div class="amt" style="color:${left > 0.005 ? 'var(--bad)' : '#16a34a'}">${left > 0.005 ? fmt(left) : '✓ погашено'}</div>
       <button class="del" style="color:var(--acc);font-size:13px" data-pay="${esc(c.name)}">отметить оплату</button></div></div>`;
   }).join('');

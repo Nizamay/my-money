@@ -89,13 +89,18 @@ function review(list) {
     ${uSrc.length ? `<p class="mut">Неизвестные источники — что это?</p><datalist id="dl-known">${srcList}</datalist>` + uSrc.map(s =>
       `<div class="grid2"><div style="padding-top:14px">${esc(s)}</div><input data-us="${esc(s)}" list="dl-known" placeholder="напр. anb"></div>`).join('') : ''}
     ${uCat.length ? '<p class="mut">Новые магазины / получатели — какая категория? (запомнится)</p>' + uCat.map(m =>
-      `<div class="grid2"><div style="padding-top:14px">${esc(m)}</div><select data-uc="${esc(m)}" data-blank="— категория —">${catOptions('', '— категория —')}</select></div>`).join('') : ''}
+      `<div class="grid2" data-urow="${esc(m)}"><div style="padding-top:14px"><button class="del" data-drop="${esc(m)}" title="убрать">✕</button> ${esc(m)}</div><select data-uc="${esc(m)}" data-blank="— категория —">${catOptions('', '— категория —')}</select></div>`).join('') : ''}
     <div id="r-rows">${pend.map((p, i) => `<div class="row"><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-i="${i}" ${p.use ? 'checked' : ''} style="width:auto;margin:0">
       <span>${esc(p.t.merchant || p.t.category)}<div class="m">${new Date(p.t.date).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ${esc(p.t.source)}${p.t.note ? ' · ' + esc(p.t.note) : ''}${isDup(p.t) ? ' · уже есть' : ''}</div></span></label>
       <b class="${p.t.income || p.t.amount < 0 ? 'inc' : ''}">${p.t.income || p.t.amount < 0 ? '+' : '−'}${fmt(Math.abs(p.t.amount))}</b></div>`).join('')}</div>
     <button class="btn" id="r-go">Распределить и сохранить</button>
     <button class="btn ghost" id="r-cancel">Отмена</button>`;
   $('r-rows').onchange = e => { const i = e.target.dataset.i; if (i != null) pend[+i].use = e.target.checked; };
+  $('review').onclick = e => {
+    const m = e.target.dataset.drop; if (m == null) return;
+    pend.forEach((p, i) => { if (p.t.merchant === m) { p.use = false; const c = document.querySelector(`#r-rows [data-i="${i}"]`); if (c) c.checked = false; } });
+    e.target.closest('[data-urow]').remove();
+  };
   $('r-cancel').onclick = () => { pend = []; $('review').style.display = 'none'; };
   $('r-go').onclick = commit;
 }
@@ -116,6 +121,7 @@ function commit() {
   pend.forEach(p => {
     if (!p.use || isDup(p.t)) return;
     if (isXfer(p.t)) { p.t.income = false; p.t.payTo = cardFor(p.t) || askCard(); }
+    if (isInfo(p.t)) p.t.payTo = cardFor(p.t);
     S.tx.push(p.t); n++;
   });
   save(); pend = []; $('review').style.display = 'none';

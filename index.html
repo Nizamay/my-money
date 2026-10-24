@@ -46,7 +46,7 @@ svg text{fill:var(--mut);font-size:10px}
 </style>
 </head>
 <body>
-<header>Мои деньги <small style="font-size:11px;color:var(--mut);font-weight:400">v15</small></header>
+<header>Мои деньги <small style="font-size:11px;color:var(--mut);font-weight:400">v16</small></header>
 <main>
 
 <!-- ===== STATS ===== -->
@@ -166,6 +166,11 @@ svg text{fill:var(--mut);font-size:10px}
     <label class="mut"><input type="checkbox" id="only-known" style="width:auto"> Игнорировать SMS от неизвестных источников</label>
   </div>
   <div class="card">
+    <h3>Мои категории</h3>
+    <p class="mut">Созданные вами. ✕ — удалить: её операции станут «Без категории».</p>
+    <div id="cat-list"></div>
+  </div>
+  <div class="card">
     <h3>Правила категорий</h3>
     <p class="mut">Если текст SMS / магазин содержит слово → категория.</p>
     <div id="rule-list"></div>
@@ -196,10 +201,10 @@ svg text{fill:var(--mut);font-size:10px}
   <button data-t="set"><span>⚙️</span>Настройки</button>
 </nav>
 
-<script src="app.js?v=15"></script>
-<script src="scan.js?v=15"></script>
-<script src="savings.js?v=15"></script>
-<script src="cards.js?v=15"></script>
-<script src="backup.js?v=15"></script>
+<script src="app.js?v=16"></script>
+<script src="scan.js?v=16"></script>
+<script src="savings.js?v=16"></script>
+<script src="cards.js?v=16"></script>
+<script src="backup.js?v=16"></script>
 </body>
 </html>

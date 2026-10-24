@@ -47,6 +47,9 @@ const REFUND = /(возврат|refund|revers|استرداد|مسترد)/i;
 const PAYOFF_CAT = 'Погашение кредитки';
 // a payoff is a transfer whether the SMS said so or the user filed it under PAYOFF_CAT
 const isXfer = t => !!t.transfer || t.category === PAYOFF_CAT;
+// a card statement ("statement has been issued … Amount Due … Due Date") is a bill, not money moving
+const STATEMENT = /statement (?:has been )?issued|كشف حساب|выписка сформирована/i;
+const isInfo = t => t.kind === 'statement';
 // which credit card a payoff went to: its digits in the SMS (paid from the debit account 0012)
 function cardFor(t) {
   const r = t.raw || '';
@@ -54,7 +57,7 @@ function cardFor(t) {
   if (c) return c.name;
   return S.sources.some(s => s.name === t.source && s.type === 'credit') ? t.source : '';
 }
-const PAYOFF = /(credit card payment|card payment|payment to (?:your |the )?(?:credit )?card|card repayment|payment received|سداد|تسديد|погашени)/i;
+const PAYOFF = /(credit card:?\s*(?:payment|credited)|credit card[^\n]{0,60}\n?[^\n]{0,40}was credited|credit card payment|card payment|payment to (?:your |the )?(?:credit )?card|card repayment|payment received|سداد|تسديد|погашени)/i;
 const NOT_TX = /(код|code|пароль|password|не сообщайте)/i;
 const OTP = /(otp|one time password|одноразов|رمز التحقق|رمز|كلمة المرور|logged in)/i;
 const CUT = /(баланс|остаток|доступно|дост\.|balance|avl|available|ост\.|бал\.|الرصيد|رصيد|المتاح)/i;
@@ -67,7 +70,7 @@ function parseSms(text, from = '') {
   // drop the balance figure (anb puts "Balance:" mid-message, before Total amount / At / On)
   const body = raw.replace(new RegExp(CUT.source + '[^\\d\\n]{0,15}' + NUM + '(?:\\s?' + CUR + ')?', 'gi'), ' ')
     // card / account / IBAN / invoice numbers are never amounts ("VISA Card:7982", "From:0012", "(2276)")
-    .replace(/(card|iban|account|acc|invoice number|from|to|بطاقة|حساب|карта|счет|счёт)\s*:?\s*[*x\d][*x\d ]*/gi, '$1 ')
+    .replace(/(card|iban|account|acc(?:\s*no)?|invoice number|from|to|بطاقة|حساب|карта|счет|счёт)\s*:?\s*[*x\d][*x\d ]*/gi, '$1 ')
     .replace(/\(\s*\d{4}\s*\)/g, ' ');
   let amount = null, m, note = '';
   // abroad: "Amount:BHD 5 … Total amount:SAR 50.95" — the card's own total wins, the foreign amount goes to the note
@@ -86,10 +89,12 @@ function parseSms(text, from = '') {
   if (amount == null && (m = body.match(kw))) amount = toNum(m[1], m[2]);
   if (amount == null || !isFinite(amount) || amount <= 0) return null;
 
-  // date inside SMS: 24.10.26 14:05 · 24/10/2026 · 2026-10-24 14:05
+  // date inside SMS: 24.10.26 14:05 · 24/10/2026 · 2026-10-24 14:05 (a statement's due date is not when it happened)
   let date = new Date();
-  const cands = [...raw.matchAll(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[ T]+(\d{1,2}):(\d{2}))?/g)].map(m => [+m[1], +m[2], +m[3], m[4], m[5]])
-    .concat([...raw.matchAll(/(?<![\d.,])(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?(?![\d,])(?:\s+(\d{1,2}):(\d{2}))?/g)].filter(m => m[3] || m[4]).flatMap(m => [[m[3] ? +m[3] : date.getFullYear(), +m[2], +m[1], m[4], m[5]]]
+  const due = (raw.match(/due date[:\s]*(\d{4}-\d{2}-\d{2})/i) || [])[1] || '';
+  const dated = raw.replace(/due date[:\s]*[\d-]+(?:\s+[\d:]+)?/i, ' ');
+  const cands = [...dated.matchAll(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[ T]+(\d{1,2}):(\d{2}))?/g)].map(m => [+m[1], +m[2], +m[3], m[4], m[5]])
+    .concat([...dated.matchAll(/(?<![\d.,])(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?(?![\d,])(?:\s+(\d{1,2}):(\d{2}))?/g)].filter(m => m[3] || m[4]).flatMap(m => [[m[3] ? +m[3] : date.getFullYear(), +m[2], +m[1], m[4], m[5]]]
       .concat(m[3] && m[3].length === 2 ? [[+m[1], +m[2], +m[3], m[4], m[5]]] : [])));
   for (let [y, mo, dd, hh, mi] of cands) {
     if (y < 100) y += 2000;
@@ -109,6 +114,13 @@ function parseSms(text, from = '') {
   const src = S.sources.find(s => s.key.split('|').some(k => k.trim() && hay.includes(k.trim().toLowerCase())));
   if (!src && S.onlyKnown) return null;
   const rule = S.rules.find(r => r.key.split('|').some(k => k.trim() && hay.includes(k.trim().toLowerCase())));
+  if (STATEMENT.test(raw)) {
+    // SAB issues the statement ~24 days before the due date
+    const dd = due ? new Date(due + 'T12:00:00') : null;
+    return { id: uid(), date: (dd ? new Date(dd - 24 * 864e5) : date).toISOString(), amount, merchant: 'Счёт по карте', due,
+      source: src ? src.name : (from || 'Другое'), category: 'Счёт по кредитке', kind: 'statement', note: due ? 'оплатить до ' + due : '',
+      income: false, transfer: false, origin: 'sms', raw, h: hash(raw) };
+  }
   if (REFUND.test(body)) amount = -amount;
   return {
     id: uid(), date: date.toISOString(), amount, merchant,
@@ -132,7 +144,7 @@ function addSms(text, from) {
   const t = parseSms(text, from);
   if (!t) return { ok: false, msg: 'не похоже на трату' };
   if (isDup(t)) return { ok: false, msg: 'уже есть' };
-  if (isXfer(t)) t.payTo = cardFor(t);
+  if (isXfer(t) || isInfo(t)) t.payTo = cardFor(t);
   S.tx.push(t); save();
   return { ok: true, t };
 }
@@ -176,7 +188,7 @@ function buckets(a, b) {
 const COLORS = ['#2563eb', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#64748b'];
 
 function render() {
-  const exp = S.tx.filter(t => !t.income && !isXfer(t));
+  const exp = S.tx.filter(t => !t.income && !isXfer(t) && !isInfo(t));
   const now = new Date(), today = ymd(now);
   const wk = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (now.getDay() + 6) % 7);
   const mo = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -211,7 +223,7 @@ function render() {
   svg.innerHTML = h;
   const tot = inP.filter(inKey).reduce((s, t) => s + t.amount, 0);
   const nB = keys.length || 1;
-  const incP = S.tx.filter(t => t.income && !isXfer(t) && new Date(t.date) >= a && new Date(t.date) < b).reduce((s, t) => s + t.amount, 0);
+  const incP = S.tx.filter(t => t.income && !isXfer(t) && !isInfo(t) && new Date(t.date) >= a && new Date(t.date) < b).reduce((s, t) => s + t.amount, 0);
   $('ptotal').textContent = `Расходы: ${fmt(tot)} · доходы: +${fmt(incP)} · в среднем ${fmt(tot / nB)} за ${{ day: 'день', week: 'неделю', month: 'месяц' }[st.group]}` + (st.fBucket ? ` · выбрано: ${fmt(byB[st.fBucket] || 0)}` : '');
 
   // donut
@@ -257,7 +269,7 @@ const CATS = [['Продукты', '🛒'], ['Кафе и рестораны', '
   ['Авто', '🚗'], ['Дом', '🏠'], ['Коммунальные', '💡'], ['Интернет', '🌐'], ['Связь', '📱'], ['Здоровье', '💊'], ['Красота', '💇'],
   ['Одежда', '👕'], ['Покупки', '🛍️'], ['Развлечения', '🎬'], ['Спорт', '🏋️'], ['Путешествия', '✈️'], ['Образование', '🎓'],
   ['Дети', '🧸'], ['Подарки', '🎁'], ['Подписки', '🧾'], ['Страховка', '🛡️'], ['Переводы', '💸'], ['Наличные', '💵'],
-  ['Погашение кредитки', '💳'], ['Зарплата', '💰'], ['Кешбэк', '🎉'], ['Поступления', '📥'], ['Без категории', '❓']];
+  ['Погашение кредитки', '💳'], ['Счёт по кредитке', '🧾'], ['Зарплата', '💰'], ['Кешбэк', '🎉'], ['Поступления', '📥'], ['Без категории', '❓']];
 const catIcon = n => ((S.cats || []).find(c => c.name === n) || {}).icon || (CATS.find(c => c[0] === n) || [])[1] || '🏷️';
 const allCats = () => [...new Set(CATS.map(c => c[0]).concat((S.cats || []).map(c => c.name),
   S.tx.map(t => t.category), S.rules.map(r => r.cat), S.sources.map(s => s.cat)).filter(Boolean))];
@@ -402,6 +414,7 @@ $('pull').onclick = e => {
 
 function renderSet() {
   renderPull();
+  $('cat-list').innerHTML = (S.cats || []).map((c, i) => `<div class="row"><span>${c.icon} ${esc(c.name)}</span><button class="del" data-dc="${i}">×</button></div>`).join('') || '<p class="mut">Своих категорий нет</p>';
   // each bank shows what its Shortcut must be called and the exact Text line to paste into it
   const base = location.href.split('#')[0].split('?')[0];
   $('src-list').innerHTML = S.sources.map((s, i) => `<div class="row"><div style="min-width:0;flex:1">${esc(s.name)}<div class="m">${esc(s.key)} → ${esc(s.cat || '—')}</div>
@@ -418,6 +431,14 @@ $('n-add').onclick = () => { const name = $('n-name').value.trim(), key = $('n-k
 $('r-add').onclick = () => { const key = $('r-key').value.trim(), cat = $('r-cat').value.trim(); if (!key || !cat) return;
   S.rules.push({ key, cat }); save(); $('r-key').value = $('r-cat').value = ''; renderSet(); };
 $('src-list').onclick = e => { const i = e.target.dataset.ds; if (i != null) { S.sources.splice(+i, 1); save(); renderSet(); } };
+$('cat-list').onclick = e => {
+  const i = e.target.dataset.dc; if (i == null) return;
+  const c = S.cats[+i]; if (!confirm(`Удалить категорию «${c.name}»?`)) return;
+  S.cats.splice(+i, 1);
+  S.tx.forEach(t => { if (t.category === c.name) t.category = 'Без категории'; });
+  S.rules = S.rules.filter(r => r.cat !== c.name);
+  save(); renderSet(); render();
+};
 $('rule-list').onclick = e => { const i = e.target.dataset.dr; if (i != null) { S.rules.splice(+i, 1); save(); renderSet(); } };
 $('cur').onchange = () => { S.cur = $('cur').value.trim() || '₽'; save(); render(); };
 $('only-known').onchange = () => { S.onlyKnown = $('only-known').checked; save(); };
