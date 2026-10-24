@@ -28,6 +28,10 @@ if (S.seeded < 3) {
   });
   S.seeded = 3;
 }
+if (S.seeded < 4) {
+  S.rules.unshift({ key: 'Traffic Violations|violation', cat: 'Штрафы' }, { key: 'MOI Payments|Absher|أبشر', cat: 'Госуслуги' });
+  S.seeded = 4;
+}
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { alert('Не удалось сохранить: ' + e.message); } };
 const $ = id => document.getElementById(id);
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -59,7 +63,7 @@ function cardFor(t) {
 }
 const PAYOFF = /(credit card:?\s*(?:payment|credited)|credit card[^\n]{0,60}\n?[^\n]{0,40}was credited|credit card payment|card payment|payment to (?:your |the )?(?:credit )?card|card repayment|payment received|سداد|تسديد|погашени)/i;
 const NOT_TX = /(код|code|пароль|password|не сообщайте)/i;
-const OTP = /(otp|one time password|одноразов|رمز التحقق|رمز|كلمة المرور|logged in)/i;
+const OTP = /(violation has been issued|otp|one time password|одноразов|رمز التحقق|رمز|كلمة المرور|logged in)/i;
 const CUT = /(баланс|остаток|доступно|дост\.|balance|avl|available|ост\.|бал\.|الرصيد|رصيد|المتاح)/i;
 const toNum = (a, b) => parseFloat(a.replace(/[ ,  ]/g, '') + (b ? '.' + b : ''));
 const latinDigits = s => s.replace(/[٠-٩]/g, c => c.charCodeAt(0) - 0x660).replace(/[۰-۹]/g, c => c.charCodeAt(0) - 0x6f0).replace(/٫/g, '.').replace(/٬/g, ',');
@@ -83,7 +87,11 @@ function parseSms(text, from = '') {
   // "Amount: SAR 45.00" / "مبلغ: 45 ريال" → amount next to a currency → keyword before a number
   const lab = new RegExp('(?:amount|amt|مبلغ|المبلغ|بمبلغ|сумма)(?:\\s+in)?[:\\s]*(?:' + CUR + '[:\\s]*)?' + NUM, 'i');
   const kw = new RegExp('(?:покупка|оплата|списание|списано|расход|снятие|выдача|перевод|purchase|payment|spent|debit|pokupka|oplata)[^\\d*]{0,40}?' + NUM, 'i');
-  if (amount == null && (m = body.match(lab))) amount = toNum(m[1], m[2]);
+  if (amount == null && (m = body.match(lab))) {
+    amount = toNum(m[1], m[2]);
+    const fc = m[0].match(/\b(?!sar\b)([a-z]{3})\s*[\d]/i);
+    if (fc && !note) note = fc[1].toUpperCase() + ' ' + amount + ' (не SAR)';
+  }
   if (amount == null && (m = body.match(new RegExp(NUM + '\\s?' + CUR, 'i')))) amount = toNum(m[1], m[2]);
   if (amount == null && (m = body.match(new RegExp(CUR + '\\s?' + NUM, 'i')))) amount = toNum(m[1], m[2]);
   if (amount == null && (m = body.match(kw))) amount = toNum(m[1], m[2]);
@@ -105,7 +113,8 @@ function parseSms(text, from = '') {
   // merchant
   let merchant = '';
   if ((m = body.match(/sender[:\s]+([^\n]{2,40})/i))) merchant = m[1];
-  else if ((m = body.match(/(?:\bв\b|\bat\b|магазин|merchant|biller|sender|(?<=transfer[^]*)\bto|لدى|عند|المتجر|التاجر|من(?=:))[:\s]+([^,;\n]{2,40}?)(?=[.,;\n]|\s+\d|\s+for\s|$)/i))) merchant = m[1];
+  else if ((m = raw.match(/^(.{2,25}?)\s+payments?\b[^]*?provider\s*:\s*([^\n]{2,40})/i))) merchant = m[1].trim() + ' · ' + m[2].trim();
+  else if ((m = body.match(/(?:\bв\b|\bat\b|магазин|merchant|biller|sender|(?<=transfer[^]*)\bto|لدى|عند|المتجر|التاجر|من(?=:))[:\s]+([^,;\n]{2,40}?)(?=[.,;\n]|\s+\d|\s+for\s|\s+[A-Za-z][A-Za-z ]{1,20}:|$)/i))) merchant = m[1];
   if (!merchant && (m = body.match(/\b([A-Z][A-Z0-9*'&\-. ]{3,30})\b/))) merchant = m[1];
   merchant = merchant.replace(new RegExp(CUR, 'ig'), '').replace(/\s+/g, ' ').trim();
   if (/^[*\d\s.,]+$/.test(merchant)) merchant = '';   // a masked account number or an amount is not a merchant
@@ -270,7 +279,7 @@ function render() {
 const CATS = [['Продукты', '🛒'], ['Кафе и рестораны', '☕'], ['Доставка еды', '🍔'], ['Такси', '🚕'], ['Транспорт', '🚌'], ['Топливо', '⛽'],
   ['Авто', '🚗'], ['Дом', '🏠'], ['Коммунальные', '💡'], ['Интернет', '🌐'], ['Связь', '📱'], ['Здоровье', '💊'], ['Красота', '💇'],
   ['Одежда', '👕'], ['Покупки', '🛍️'], ['Развлечения', '🎬'], ['Спорт', '🏋️'], ['Путешествия', '✈️'], ['Образование', '🎓'],
-  ['Дети', '🧸'], ['Подарки', '🎁'], ['Подписки', '🧾'], ['Страховка', '🛡️'], ['Переводы', '💸'], ['Наличные', '💵'],
+  ['Дети', '🧸'], ['Подарки', '🎁'], ['Подписки', '🧾'], ['Страховка', '🛡️'], ['Штрафы', '🚨'], ['Госуслуги', '🏛️'], ['Переводы', '💸'], ['Наличные', '💵'],
   ['Погашение кредитки', '💳'], ['Счёт по кредитке', '🧾'], ['Зарплата', '💰'], ['Кешбэк', '🎉'], ['Поступления', '📥'], ['Без категории', '❓']];
 const catIcon = n => ((S.cats || []).find(c => c.name === n) || {}).icon || (CATS.find(c => c[0] === n) || [])[1] || '🏷️';
 const allCats = () => [...new Set(CATS.map(c => c[0]).concat((S.cats || []).map(c => c.name),
