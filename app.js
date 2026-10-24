@@ -4,6 +4,12 @@ const KEY = 'mymoney.v1';
 const DEF = { tx: [], sources: [], rules: [], cur: '₽', onlyKnown: false };
 let S;
 try { S = Object.assign({}, DEF, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { S = Object.assign({}, DEF); }
+// first run: the two banks the SMS come from, riyals
+if (!S.seeded) {
+  if (!S.sources.length) S.sources = [{ name: 'anb', key: 'anb|arab national', cat: '' }, { name: 'SAB', key: 'sab|saudi awwal', cat: '' }];
+  if (S.cur === '₽' && !S.tx.length) S.cur = 'SAR';
+  S.seeded = 1;
+}
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { alert('Не удалось сохранить: ' + e.message); } };
 const $ = id => document.getElementById(id);
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -13,35 +19,42 @@ const ymd = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0
 const hash = s => { let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33 ^ s.charCodeAt(i)) >>> 0; return h.toString(36); };
 
 /* ---------- SMS parser ---------- */
-const NUM = '(\\d{1,3}(?:[ \\u00a0\\u202f]\\d{3})+|\\d+)(?:[.,](\\d{1,2}))?';
-const CUR = '(?:₽|руб\\.?|р\\.|р\\b|rub|rur|\\$|usd|€|eur|₸|kzt|тг|uah|₴|грн|byn|gel|₾|amd|uzs|сум|try|₺|aed)';
-const INCOME = /(зачислен|пополнен|поступлен|перевод от|возврат|refund|credited|cashback|кешбэк|кэшбэк)/i;
-const NOT_TX = /(код|code|пароль|password|otp|не сообщайте)/i;
-const CUT = /(баланс|остаток|доступно|дост\.|balance|avl|available|ост\.|бал\.)/i;
-const toNum = (a, b) => parseFloat(a.replace(/[   ]/g, '') + (b ? '.' + b : ''));
+// 1 250,50 · 1,250.00 · 45.5
+const NUM = '(\\d{1,3}(?:,\\d{3})+(?=\\.\\d)|\\d{1,3}(?:[ \\u00a0\\u202f]\\d{3})+|\\d+)(?:[.,](\\d{1,2}))?';
+const CUR = '(?:sar|ر\\.?\\s?س|ريال|رس|₽|руб\\.?|р\\.|р\\b|rub|rur|\\$|usd|€|eur|₸|kzt|тг|uah|₴|грн|byn|gel|₾|amd|uzs|сум|try|₺|aed)';
+const INCOME = /(зачислен|пополнен|поступлен|перевод от|возврат|refund|credited|cashback|кешбэк|кэшбэк|deposit|incoming|received|salary|reversal|إيداع|ايداع|وارد|استرداد|راتب|مسترد)/i;
+const NOT_TX = /(код|code|пароль|password|otp|не сообщайте|رمز|كلمة المرور)/i;
+const CUT = /(баланс|остаток|доступно|дост\.|balance|avl|available|ост\.|бал\.|الرصيد|رصيد|المتاح)/i;
+const toNum = (a, b) => parseFloat(a.replace(/[ ,  ]/g, '') + (b ? '.' + b : ''));
+const latinDigits = s => s.replace(/[٠-٩]/g, c => c.charCodeAt(0) - 0x660).replace(/[۰-۹]/g, c => c.charCodeAt(0) - 0x6f0).replace(/٫/g, '.').replace(/٬/g, ',');
 
 function parseSms(text, from = '') {
-  const raw = text.trim();
-  if (!raw || NOT_TX.test(raw) && !/(покупк|оплат|списан|purchase|payment)/i.test(raw)) return null;
+  const raw = latinDigits(text.trim());
+  if (!raw || NOT_TX.test(raw) && !/(покупк|оплат|списан|purchase|payment|شراء|دفع)/i.test(raw)) return null;
   const body = raw.split(CUT)[0];               // ignore balance part
   let amount = null, m;
-  const kw = new RegExp('(?:покупка|оплата|списание|списано|расход|снятие|выдача|перевод|purchase|payment|spent|debit|pokupka|oplata)[^\\d]{0,40}?' + NUM, 'i');
-  if ((m = body.match(kw))) amount = toNum(m[1], m[2]);
+  // "Amount: SAR 45.00" / "مبلغ: 45 ريال" → amount next to a currency → keyword before a number
+  const lab = new RegExp('(?:amount|amt|مبلغ|المبلغ|بمبلغ|сумма)[:\\s]*(?:' + CUR + '\\s?)?' + NUM, 'i');
+  const kw = new RegExp('(?:покупка|оплата|списание|списано|расход|снятие|выдача|перевод|purchase|payment|spent|debit|pokupka|oplata)[^\\d*]{0,40}?' + NUM, 'i');
+  if ((m = body.match(lab))) amount = toNum(m[1], m[2]);
   if (amount == null && (m = body.match(new RegExp(NUM + '\\s?' + CUR, 'i')))) amount = toNum(m[1], m[2]);
   if (amount == null && (m = body.match(new RegExp(CUR + '\\s?' + NUM, 'i')))) amount = toNum(m[1], m[2]);
+  if (amount == null && (m = body.match(kw))) amount = toNum(m[1], m[2]);
   if (amount == null || !isFinite(amount) || amount <= 0) return null;
 
-  // date inside SMS: 24.10.26 14:05 / 24.10.2026 / 24.10
+  // date inside SMS: 24.10.26 14:05 · 24/10/2026 · 2026-10-24 14:05
   let date = new Date();
-  if ((m = raw.match(/\b(\d{2})\.(\d{2})(?:\.(\d{2,4}))?(?:\s+(\d{1,2}):(\d{2}))?/))) {
-    let y = m[3] ? +m[3] : date.getFullYear(); if (y < 100) y += 2000;
-    const d = new Date(y, +m[2] - 1, +m[1], m[4] ? +m[4] : 12, m[5] ? +m[5] : 0);
-    if (!isNaN(d) && d <= new Date(Date.now() + 864e5) && +m[2] <= 12) date = d;
+  const cands = [...raw.matchAll(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[ T]+(\d{1,2}):(\d{2}))?/g)].map(m => [+m[1], +m[2], +m[3], m[4], m[5]])
+    .concat([...raw.matchAll(/(?<![\d.,])(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?(?![\d,])(?:\s+(\d{1,2}):(\d{2}))?/g)].map(m => [m[3] ? +m[3] : date.getFullYear(), +m[2], +m[1], m[4], m[5]]));
+  for (let [y, mo, dd, hh, mi] of cands) {
+    if (y < 100) y += 2000;
+    const d = new Date(y, mo - 1, dd, hh ? +hh : 12, mi ? +mi : 0);
+    if (mo >= 1 && mo <= 12 && dd >= 1 && dd <= 31 && d <= new Date(Date.now() + 864e5) && d > new Date(Date.now() - 400 * 864e5)) { date = d; break; }
   }
 
   // merchant
   let merchant = '';
-  if ((m = body.match(/(?:\bв\b|\bat\b|магазин|merchant)[:\s]+([^,;\n]{2,40}?)(?=[.,;\n]|\s+\d|$)/i))) merchant = m[1];
+  if ((m = body.match(/(?:\bв\b|\bat\b|магазин|merchant|لدى|عند|المتجر|التاجر|من(?=:))[:\s]+([^,;\n]{2,40}?)(?=[.,;\n]|\s+\d|$)/i))) merchant = m[1];
   if (!merchant && (m = body.match(/\b([A-Z][A-Z0-9*'&\-. ]{3,30})\b/))) merchant = m[1];
   merchant = merchant.replace(new RegExp(CUR, 'ig'), '').replace(/\s+/g, ' ').trim();
 
