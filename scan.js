@@ -80,7 +80,10 @@ function review(list, skipped = []) {
   pend = list.filter(t => { const k = t.amount + '|' + t.date.slice(0, 16); if (seen.has(k)) return false; seen.add(k); return true; })
     // a code-only purchase is dropped when the real purchase SMS (same amount, within a day) is there too
     .filter(t => t.kind !== 'otp' || !list.concat(S.tx).some(x => x !== t && x.kind !== 'otp' && !x.income && !isXfer(x) && Math.abs(x.amount) === t.amount && Math.abs(new Date(x.date) - new Date(t.date)) < 864e5))
-    .map(t => ({ t, use: !isDup(t) && t.kind !== 'otp' }));
+    .map(t => ({ t, use: true }));
+  const already = pend.filter(p => isDup(p.t)).length;
+  pend = pend.filter(p => !isDup(p.t));
+  if (!pend.length) { $('review').style.display = 'none'; toast(already ? `Новых операций нет (уже сохранено: ${already})` : 'Операций не найдено'); return; }
   if (!pend.length) { $('review').style.display = 'none'; return; }
   const known = new Set(S.sources.map(s => s.name));
   const uSrc = [...new Set(pend.map(p => p.t.source).filter(s => !known.has(s)))];
@@ -89,13 +92,13 @@ function review(list, skipped = []) {
   const catOf = m => (pend.find(p => p.t.merchant === m) || {}).t.category;
   const srcList = [...known].map(n => `<option value="${esc(n)}">`).join('');
   $('review').style.display = '';
-  $('review').innerHTML = `<h3>Проверка: ${pend.length} операций</h3>
+  $('review').innerHTML = `<h3>Проверка: ${pend.length} новых операций</h3>${already ? `<p class="mut">Уже сохранены и не показаны: ${already}</p>` : ''}
     ${uSrc.length ? `<p class="mut">Неизвестные источники — что это?</p><datalist id="dl-known">${srcList}</datalist>` + uSrc.map(s =>
       `<div class="grid2"><div style="padding-top:14px">${esc(s)}</div><input data-us="${esc(s)}" list="dl-known" placeholder="напр. anb"></div>`).join('') : ''}
     ${uCat.length ? '<p class="mut">Новые магазины / получатели — какая категория? (запомнится)</p>' + uCat.map(m =>
       `<div class="grid2" data-urow="${esc(m)}"><div style="padding-top:14px"><button class="del" data-drop="${esc(m)}" title="убрать">✕</button> ${esc(m)}</div><select data-uc="${esc(m)}" data-blank="— категория —">${catOptions(catOf(m) === 'Без категории' ? '' : catOf(m), '— категория —')}</select></div>`).join('') : ''}
     <div id="r-rows">${pend.map((p, i) => `<div class="row"><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-i="${i}" ${p.use ? 'checked' : ''} style="width:auto;margin:0">
-      <span>${catIcon(p.t.category)} ${esc(p.t.merchant || p.t.category)}<div class="m">${esc(p.t.category)}${p.t.kind === 'otp' ? ' · ⚠️ только код подтверждения — отметьте, если покупка была' : isInfo(p.t) || isXfer(p.t) ? ' (не трата)' : ''} · ${new Date(p.t.date).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ${esc(p.t.source)}${p.t.note ? ' · ' + esc(p.t.note) : ''}${isDup(p.t) ? ' · уже есть' : ''}</div></span></label>
+      <span>${catIcon(p.t.category)} ${esc(p.t.merchant || p.t.category)}<div class="m">${esc(p.t.category)}${p.t.kind === 'otp' ? ' · ⚠️ только код подтверждения — снимите галочку, если покупки не было' : isInfo(p.t) || isXfer(p.t) ? ' (не трата)' : ''} · ${new Date(p.t.date).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ${esc(p.t.source)}${p.t.note ? ' · ' + esc(p.t.note) : ''}${isDup(p.t) ? ' · уже есть' : ''}</div></span></label>
       <b class="${p.t.income || p.t.amount < 0 ? 'inc' : ''}">${p.t.income || p.t.amount < 0 ? '+' : '−'}${fmt(Math.abs(p.t.amount))}</b></div>`).join('')}</div>
     ${skipped.length ? `<details style="margin:10px 0"><summary class="mut">Не распознано SMS: ${skipped.length} (коды, реклама, уведомления — проверьте, нет ли там трат)</summary>`
       + skipped.map(x => `<div class="m" style="border-bottom:1px solid var(--line);padding:6px 0;white-space:pre-wrap">${esc(x.slice(0, 160))}</div>`).join('') + '</details>' : ''}
