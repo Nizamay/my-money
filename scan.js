@@ -113,7 +113,11 @@ function commit() {
     pend.forEach(p => { if (p.t.merchant === m) p.t.category = cat; });
   });
   let n = 0;
-  pend.forEach(p => { if (p.use && !isDup(p.t)) { S.tx.push(p.t); n++; } });
+  pend.forEach(p => {
+    if (!p.use || isDup(p.t)) return;
+    if (isXfer(p.t)) { p.t.income = false; p.t.payTo = cardFor(p.t) || askCard(); }
+    S.tx.push(p.t); n++;
+  });
   save(); pend = []; $('review').style.display = 'none';
   toast('Добавлено операций: ' + n); render(); renderSet(); srcOptions();
 }

@@ -44,6 +44,16 @@ const INCOME = /(credit transfer|зачислен|пополнен|поступ�
 // a refund / reversal cancels a purchase: stored as a negative expense so totals net out
 const REFUND = /(возврат|refund|revers|استرداد|مسترد)/i;
 // paying off a credit card moves money between own cards: neither an expense nor an income
+const PAYOFF_CAT = 'Погашение кредитки';
+// a payoff is a transfer whether the SMS said so or the user filed it under PAYOFF_CAT
+const isXfer = t => !!t.transfer || t.category === PAYOFF_CAT;
+// which credit card a payoff went to: its digits in the SMS (paid from the debit account 0012)
+function cardFor(t) {
+  const r = t.raw || '';
+  const c = S.sources.find(s => s.type === 'credit' && s.name !== t.source && s.key.split('|').some(k => /^\d{3,}$/.test(k.trim()) && r.includes(k.trim())));
+  if (c) return c.name;
+  return S.sources.some(s => s.name === t.source && s.type === 'credit') ? t.source : '';
+}
 const PAYOFF = /(credit card payment|card payment|payment to (?:your |the )?(?:credit )?card|card repayment|payment received|سداد|تسديد|погашени)/i;
 const NOT_TX = /(код|code|пароль|password|не сообщайте)/i;
 const OTP = /(otp|one time password|одноразов|رمز التحقق|رمز|كلمة المرور|logged in)/i;
@@ -103,7 +113,7 @@ function parseSms(text, from = '') {
   return {
     id: uid(), date: date.toISOString(), amount, merchant,
     source: src ? src.name : (from || 'Другое'),
-    category: rule ? rule.cat : PAYOFF.test(body) ? 'Погашение кредитки' : /outgoing transfer|تحويل صادر|исходящий перевод/i.test(body) ? 'Переводы'
+    category: rule ? rule.cat : PAYOFF.test(body) ? PAYOFF_CAT : /outgoing transfer|تحويل صادر|исходящий перевод/i.test(body) ? 'Переводы'
       : !REFUND.test(body) && INCOME.test(body) ? (/cashback|кешбэк|кэшбэк/i.test(body) ? 'Кешбэк' : /salary|راتب|зарплат/i.test(body) ? 'Зарплата' : 'Поступления')
       : /withdraw|\batm\b|cash withdrawal|سحب|صراف|снятие налич|банкомат/i.test(body) ? 'Наличные' : (src && src.cat) || 'Без категории',
     note, income: !PAYOFF.test(body) && !REFUND.test(body) && INCOME.test(body), transfer: PAYOFF.test(body), origin: 'sms', raw, h: hash(raw)
@@ -112,10 +122,17 @@ function parseSms(text, from = '') {
 
 const isDup = t => S.tx.some(x => x.h === t.h || (x.origin === 'sms' && x.amount === t.amount && x.date.slice(0, 16) === t.date.slice(0, 16)));
 
+function askCard() {
+  const cards = S.sources.filter(s => s.type === 'credit').map(s => s.name);
+  const a = prompt('Какую кредитку погасили? ' + cards.map((c, i) => `${i + 1} — ${c}`).join(', '), '1');
+  return cards[+a - 1] || '';
+}
+
 function addSms(text, from) {
   const t = parseSms(text, from);
   if (!t) return { ok: false, msg: 'не похоже на трату' };
   if (isDup(t)) return { ok: false, msg: 'уже есть' };
+  if (isXfer(t)) t.payTo = cardFor(t);
   S.tx.push(t); save();
   return { ok: true, t };
 }
@@ -159,7 +176,7 @@ function buckets(a, b) {
 const COLORS = ['#2563eb', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#64748b'];
 
 function render() {
-  const exp = S.tx.filter(t => !t.income && !t.transfer);
+  const exp = S.tx.filter(t => !t.income && !isXfer(t));
   const now = new Date(), today = ymd(now);
   const wk = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (now.getDay() + 6) % 7);
   const mo = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -194,7 +211,7 @@ function render() {
   svg.innerHTML = h;
   const tot = inP.filter(inKey).reduce((s, t) => s + t.amount, 0);
   const nB = keys.length || 1;
-  const incP = S.tx.filter(t => t.income && !t.transfer && new Date(t.date) >= a && new Date(t.date) < b).reduce((s, t) => s + t.amount, 0);
+  const incP = S.tx.filter(t => t.income && !isXfer(t) && new Date(t.date) >= a && new Date(t.date) < b).reduce((s, t) => s + t.amount, 0);
   $('ptotal').textContent = `Расходы: ${fmt(tot)} · доходы: +${fmt(incP)} · в среднем ${fmt(tot / nB)} за ${{ day: 'день', week: 'неделю', month: 'месяц' }[st.group]}` + (st.fBucket ? ` · выбрано: ${fmt(byB[st.fBucket] || 0)}` : '');
 
   // donut
@@ -265,6 +282,7 @@ $('list').onchange = e => {
   const id = e.target.dataset.cat; if (!id) return;
   let c = e.target.value; if (c === '__new') { c = prompt('Новая категория'); if (!c) return render(); }
   const t = S.tx.find(x => x.id === id); t.category = c;
+  if (c === PAYOFF_CAT) { t.income = false; t.payTo = cardFor(t) || askCard(); }
   if (t.merchant && confirm(`Всегда относить «${t.merchant}» к «${c}»?`)) {
     S.rules.unshift({ key: t.merchant, cat: c });
     S.tx.forEach(x => { if (x.merchant === t.merchant) x.category = c; });

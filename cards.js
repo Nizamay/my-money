@@ -3,10 +3,12 @@
 const monthStart = (y, m) => new Date(y, m, 1);
 
 function cardMonth(name, a, b) {
-  const own = S.tx.filter(t => t.source === name && new Date(t.date) >= a && new Date(t.date) < b);
-  const spent = own.filter(t => !t.income && !t.transfer).reduce((s, t) => s + t.amount, 0);   // refunds are negative already
-  const paid = own.filter(t => t.transfer).reduce((s, t) => s + t.amount, 0);
-  const back = own.filter(t => t.income).reduce((s, t) => s + t.amount, 0);                     // cashback lands on the card
+  const inP = t => new Date(t.date) >= a && new Date(t.date) < b;
+  const own = S.tx.filter(t => t.source === name && inP(t));
+  const spent = own.filter(t => !t.income && !isXfer(t)).reduce((s, t) => s + t.amount, 0);   // refunds are negative already
+  // payoffs usually leave the debit account 0012, so they are found by where they went
+  const paid = S.tx.filter(t => inP(t) && isXfer(t) && (t.payTo === name || (!t.payTo && t.source === name))).reduce((s, t) => s + t.amount, 0);
+  const back = own.filter(t => t.income && !isXfer(t)).reduce((s, t) => s + t.amount, 0);                     // cashback lands on the card
   return { spent, paid, back };
 }
 
@@ -32,7 +34,7 @@ $('credit').onclick = e => {
   const name = e.target.dataset.pay; if (!name) return;
   const v = parseFloat(String(prompt(`Сколько внесли на «${name}»?`) || '').replace(',', '.').replace(/\s/g, ''));
   if (!(v > 0)) return;
-  S.tx.push({ id: uid(), date: new Date().toISOString(), amount: v, source: name, category: 'Погашение кредитки', merchant: '', note: 'внесено вручную', transfer: true, income: false, origin: 'manual' });
+  S.tx.push({ id: uid(), date: new Date().toISOString(), amount: v, source: name, category: 'Погашение кредитки', merchant: '', note: 'внесено вручную', transfer: true, payTo: name, income: false, origin: 'manual' });
   save(); render();
 };
 
