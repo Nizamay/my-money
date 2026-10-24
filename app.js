@@ -55,7 +55,9 @@ const isXfer = t => !!t.transfer || t.category === PAYOFF_CAT;
 const STATEMENT = /statement (?:has been )?issued|كشف حساب|выписка сформирована/i;
 // "UBER * PENDING" is a hold the bank releases later — neither the hold nor its reversal is spending
 const HOLD = /pending/i;
-const isInfo = t => t.kind === 'statement' || t.kind === 'hold';
+// a confirmation code that names a shop ("OTP … Amount: SAR 2084 At: www.extra.com") may be the only trace of a purchase:
+// it is offered in the review unticked, never counted on its own
+const isInfo = t => t.kind === 'statement' || t.kind === 'hold' || t.kind === 'otp';
 // well-known shops and services → a suggested category (the user's own rules always win)
 const KNOWN = [
   [/\bub(?:e)?r\b|careem|bolt|jeeny|taxi/i, 'Такси'],
@@ -95,7 +97,8 @@ const latinDigits = s => s.replace(/[٠-٩]/g, c => c.charCodeAt(0) - 0x660).rep
 
 function parseSms(text, from = '') {
   const raw = latinDigits(text.trim());
-  if (!raw || OTP.test(raw) || NOT_TX.test(raw) && !/(покупк|оплат|списан|purchase|payment|شراء|دفع)/i.test(raw)) return null;
+  const otp = OTP.test(raw) && /(?:^|\s)at\s*:/i.test(raw) && /amount/i.test(raw) && !/violation/i.test(raw);
+  if (!raw || (OTP.test(raw) && !otp) || !otp && NOT_TX.test(raw) && !/(покупк|оплат|списан|purchase|payment|شراء|دفع)/i.test(raw)) return null;
   // drop the balance figure (anb puts "Balance:" mid-message, before Total amount / At / On)
   const body = raw.replace(new RegExp(CUT.source + '[^\\d\\n]{0,15}' + NUM + '(?:\\s?' + CUR + ')?', 'gi'), ' ')
     // card / account / IBAN / invoice numbers are never amounts ("VISA Card:7982", "From:0012", "(2276)")
@@ -174,7 +177,7 @@ function parseSms(text, from = '') {
       : !REFUND.test(body) && INCOME.test(body) ? (/cashback|кешбэк|кэшбэк/i.test(body) ? 'Кешбэк' : /salary|راتب|зарплат/i.test(body) ? 'Зарплата' : 'Поступления')
       : /withdraw|\batm\b|cash withdrawal|سحب|صراف|снятие налич|банкомат/i.test(body) ? 'Наличные'
       : HOLD.test(merchant) ? 'Блокировка (pending)' : guessCat(merchant) || (src && src.cat) || 'Без категории',
-    kind: HOLD.test(merchant) ? 'hold' : undefined,
+    kind: otp ? 'otp' : HOLD.test(merchant) ? 'hold' : undefined,
     note, income: !PAYOFF.test(body) && !REFUND.test(body) && INCOME.test(body), transfer: PAYOFF.test(body), origin: 'sms', raw, h: hash(raw)
   };
 }
@@ -523,8 +526,9 @@ function intake() {
     document.querySelector('nav [data-t="add"]').click();
     let found = [];
     try {
-      found = parts.map(x => parseSms(x, from)).filter(Boolean);
-      review(found);
+      const all = parts.map(x => parseSms(x, from));
+      found = all.filter(Boolean);
+      review(found, parts.filter((x, i) => !all[i]));
       window.scrollTo(0, 0);
     } catch (err) { alert('Ошибка разбора: ' + err.message); }
     toast(`Получено SMS: ${parts.length}, распознано операций: ${found.length}`);
