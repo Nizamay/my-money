@@ -46,11 +46,12 @@ svg text{fill:var(--mut);font-size:10px}
 </style>
 </head>
 <body>
-<header>Мои деньги <small style="font-size:11px;color:var(--mut);font-weight:400">v10</small></header>
+<header>Мои деньги <small style="font-size:11px;color:var(--mut);font-weight:400">v11</small></header>
 <main>
 
 <!-- ===== STATS ===== -->
 <section class="tab on" id="t-stats">
+  <div class="seg" id="pull" style="margin:6px 0"></div>
   <div class="kpis">
     <div class="kpi"><small>Сегодня</small><b id="k-day">0</b></div>
     <div class="kpi"><small>Неделя</small><b id="k-week">0</b></div>
@@ -85,6 +86,7 @@ svg text{fill:var(--mut);font-size:10px}
 
 <!-- ===== ADD ===== -->
 <section class="tab" id="t-add">
+  <div class="card" id="review" style="display:none;border:2px solid var(--acc)"></div>
   <div class="card">
     <h3>Добавить расход</h3>
     <label class="mut">Сумма</label><input id="a-amt" type="number" inputmode="decimal" step="0.01">
@@ -103,10 +105,9 @@ svg text{fill:var(--mut);font-size:10px}
     <input type="file" id="o-file" accept="image/*" multiple>
     <div id="o-status" class="mut"></div>
   </div>
-  <div class="card" id="review" style="display:none"></div>
   <div class="card">
     <h3>Вставить SMS</h3>
-    <p class="mut">Одно или несколько SMS (разделяйте пустой строкой). Первая строка вида <code>От: Отправитель</code> — необязательна.</p>
+    <p class="mut">Одно или несколько SMS (разделяйте пустой строкой или ###). Первая строка вида <code>От: Отправитель</code> — необязательна.</p>
     <textarea id="s-text"></textarea>
     <button class="btn" id="s-parse">Разобрать</button>
     <div id="s-out"></div>
@@ -188,8 +189,8 @@ svg text{fill:var(--mut);font-size:10px}
   <button data-t="set"><span>⚙️</span>Настройки</button>
 </nav>
 
-<script src="app.js?v=10"></script>
-<script src="scan.js?v=10"></script>
-<script src="savings.js?v=10"></script>
+<script src="app.js?v=11"></script>
+<script src="scan.js?v=11"></script>
+<script src="savings.js?v=11"></script>
 </body>
 </html>

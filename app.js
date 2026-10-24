@@ -88,7 +88,8 @@ function parseSms(text, from = '') {
     id: uid(), date: date.toISOString(), amount, merchant,
     source: src ? src.name : (from || 'Другое'),
     category: rule ? rule.cat : /outgoing transfer|تحويل صادر|исходящий перевод/i.test(body) ? 'Переводы'
-      : /withdraw|\batm\b|cash|سحب|صراف|снятие налич|банкомат/i.test(body) ? 'Наличные' : (src && src.cat) || 'Без категории',
+      : !REFUND.test(body) && INCOME.test(body) ? (/cashback|кешбэк|кэшбэк/i.test(body) ? 'Кешбэк' : /salary|راتب|зарплат/i.test(body) ? 'Зарплата' : 'Поступления')
+      : /withdraw|\batm\b|cash withdrawal|سحب|صراف|снятие налич|банкомат/i.test(body) ? 'Наличные' : (src && src.cat) || 'Без категории',
     note, income: !REFUND.test(body) && INCOME.test(body), origin: 'sms', raw, h: hash(raw)
   };
 }
@@ -177,7 +178,8 @@ function render() {
   svg.innerHTML = h;
   const tot = inP.filter(inKey).reduce((s, t) => s + t.amount, 0);
   const nB = keys.length || 1;
-  $('ptotal').textContent = `Итого: ${fmt(tot)} · в среднем ${fmt(tot / nB)} за ${{ day: 'день', week: 'неделю', month: 'месяц' }[st.group]}` + (st.fBucket ? ` · выбрано: ${fmt(byB[st.fBucket] || 0)}` : '');
+  const incP = S.tx.filter(t => t.income && new Date(t.date) >= a && new Date(t.date) < b).reduce((s, t) => s + t.amount, 0);
+  $('ptotal').textContent = `Расходы: ${fmt(tot)} · доходы: +${fmt(incP)} · в среднем ${fmt(tot / nB)} за ${{ day: 'день', week: 'неделю', month: 'месяц' }[st.group]}` + (st.fBucket ? ` · выбрано: ${fmt(byB[st.fBucket] || 0)}` : '');
 
   // donut
   const inBucket = t => !st.fBucket || bucketOf(new Date(t.date)) === st.fBucket;
@@ -331,7 +333,19 @@ $('b-exp').onclick = () => {
 };
 
 /* ---------- settings ---------- */
+/* ---------- «Подгрузить»: run the user's Shortcut «История <банк>», which reopens the app with the SMS ---------- */
+function renderPull() {
+  $('pull').innerHTML = S.sources.map(s => `<button data-pull="${esc(s.name)}">⟳ ${esc(s.name)}</button>`).join('')
+    + '<button data-reload="1" title="Обновить приложение">↻</button>';
+}
+$('pull').onclick = e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.reload) return location.reload();
+  location.href = 'shortcuts://run-shortcut?name=' + encodeURIComponent('История ' + b.dataset.pull);
+};
+
 function renderSet() {
+  renderPull();
   $('src-list').innerHTML = S.sources.map((s, i) => `<div class="row"><div>${esc(s.name)}<div class="m">${esc(s.key)} → ${esc(s.cat || '—')}</div></div><button class="del" data-ds="${i}">×</button></div>`).join('') || '<p class="mut">Нет источников</p>';
   $('rule-list').innerHTML = S.rules.map((r, i) => `<div class="row"><div>${esc(r.key)}<div class="m">→ ${esc(r.cat)}</div></div><button class="del" data-dr="${i}">×</button></div>`).join('') || '<p class="mut">Нет правил</p>';
   $('cur').value = S.cur; $('only-known').checked = S.onlyKnown;
@@ -364,9 +378,13 @@ function intake() {
   if (parts.length > 1) {
     history.replaceState(null, '', location.pathname + location.search);
     document.querySelector('nav [data-t="add"]').click();
-    review(parts.map(x => parseSms(x, from)).filter(Boolean));
-    $('review').scrollIntoView();
-    toast(`Получено SMS: ${parts.length}`);
+    let found = [];
+    try {
+      found = parts.map(x => parseSms(x, from)).filter(Boolean);
+      review(found);
+      window.scrollTo(0, 0);
+    } catch (err) { alert('Ошибка разбора: ' + err.message); }
+    toast(`Получено SMS: ${parts.length}, распознано операций: ${found.length}`);
     return;
   }
   const r = addSms(text, from);

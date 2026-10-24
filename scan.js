@@ -65,7 +65,7 @@ $('o-file').onchange = async e => {
 // pasted SMS go through the same review
 $('s-parse').onclick = () => {
   const found = [];
-  $('s-text').value.split(/\n\s*\n/).forEach(block => {
+  $('s-text').value.split(/\n\s*\n|\s*#{3,}\s*/).forEach(block => {
     let from = '', text = block.trim(); const m = text.match(/^(?:от|from)\s*:\s*(.+)\n/i);
     if (m) { from = m[1].trim(); text = text.slice(m[0].length); }
     const t = parseSms(text, from); if (t) found.push(t);
