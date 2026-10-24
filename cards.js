@@ -2,6 +2,25 @@
 /* ---------- credit cards: what was spent this / last month and what is still to pay off ---------- */
 const monthStart = (y, m) => new Date(y, m, 1);
 
+/* ---------- re-read saved SMS with the current parser: operations saved by an older version get
+   the right time, amount, shop and kind; a category the user chose is kept ---------- */
+const PARSER_VER = 25;
+function reparseAll() {
+  let n = 0;
+  S.tx.forEach(t => {
+    if (t.origin !== 'sms' || !t.raw) return;
+    const r = parseSms(t.raw, t.source.split(' ')[0]); if (!r) return;
+    const before = JSON.stringify([t.date, t.amount, t.merchant, t.kind, t.income, t.transfer]);
+    Object.assign(t, { date: r.date, amount: r.amount, merchant: r.merchant, note: r.note || t.note, kind: r.kind, income: r.income, transfer: r.transfer, due: r.due });
+    if (!t.category || t.category === 'Без категории' || isInfo(r) || isXfer(r)) t.category = r.category;
+    if (isXfer(t) || isInfo(t)) t.payTo = t.payTo || cardFor(t);
+    if (before !== JSON.stringify([t.date, t.amount, t.merchant, t.kind, t.income, t.transfer])) n++;
+  });
+  S.parserVer = PARSER_VER; save();
+  return n;
+}
+if (S.parserVer !== PARSER_VER && S.tx.length) { const n = reparseAll(); if (n) setTimeout(() => toast('Исправлено операций: ' + n), 500); }
+
 // operations saved before holds were recognised: a PENDING charge and its reversal are not spending
 if (S.tx.some(t => !t.kind && HOLD.test(t.merchant || ''))) {
   S.tx.forEach(t => { if (!t.kind && HOLD.test(t.merchant || '')) { t.kind = 'hold'; t.category = 'Блокировка (pending)'; } });
@@ -60,3 +79,5 @@ $('credit').onclick = e => {
 const _render = render;
 render = function () { _render(); renderCredit(); };
 render();
+
+$('reparse').onclick = () => { const n = reparseAll(); render(); toast('Исправлено операций: ' + n); };
