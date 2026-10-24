@@ -84,7 +84,8 @@ function parseSms(text, from = '') {
   return {
     id: uid(), date: date.toISOString(), amount, merchant,
     source: src ? src.name : (from || 'Другое'),
-    category: rule ? rule.cat : /outgoing transfer|تحويل صادر|исходящий перевод/i.test(body) ? 'Переводы' : (src && src.cat) || 'Без категории',
+    category: rule ? rule.cat : /outgoing transfer|تحويل صادر|исходящий перевод/i.test(body) ? 'Переводы'
+      : /withdraw|\batm\b|cash|سحب|صراف|снятие налич|банкомат/i.test(body) ? 'Наличные' : (src && src.cat) || 'Без категории',
     note, income: !REFUND.test(body) && INCOME.test(body), origin: 'sms', raw, h: hash(raw)
   };
 }

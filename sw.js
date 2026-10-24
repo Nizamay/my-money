@@ -1,4 +1,4 @@
-const C = 'mymoney-v7', FILES = ['./', 'index.html', 'app.js', 'scan.js', 'savings.js', 'manifest.json', 'icon.svg'];
+const C = 'mymoney-v8', FILES = ['./', 'index.html', 'app.js', 'scan.js', 'savings.js', 'manifest.json', 'icon.svg'];
 self.addEventListener('install', e => e.waitUntil(caches.open(C).then(c => c.addAll(FILES))));
 self.addEventListener('activate', e => e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== C).map(k => caches.delete(k))))));
 // network first, cache as fallback (offline)
