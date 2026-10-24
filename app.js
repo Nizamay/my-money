@@ -410,20 +410,23 @@ $('b-exp').onclick = () => {
 };
 
 /* ---------- settings ---------- */
-/* ---------- «Подгрузить»: run the user's Shortcut «История <банк>», which reopens the app with the SMS ---------- */
-// the Shortcut a bank's ⟳ button runs: whatever the user named it in Settings, «История <банк>» by default
-const scName = bank => (S.scNames || {})[bank] || 'История ' + bank;
+/* ---------- «Подгрузить»: run the user's Shortcut, which reopens the app with the SMS ---------- */
+// each card has its own Shortcut name (set in Settings); a bank-wide name saved earlier is the fallback
+const bankOf = src => src.split(' ')[0];
+const scName = src => (S.scNames || {})[src] || (S.scNames || {})[bankOf(src)] || 'История ' + bankOf(src);
 
 function renderPull() {
-  // one Shortcut per bank: «anb кредитка» and «anb дебетовая» share «История anb»
-  const banks = [...new Set(S.sources.map(s => s.name.split(' ')[0]))];
-  $('pull').innerHTML = banks.map(n => `<button data-pull="${esc(n)}">⟳ ${esc(n)}</button>`).join('')
+  // one button per distinct Shortcut: cards sharing a Shortcut share a button
+  const by = {};
+  S.sources.forEach(s => { (by[scName(s.name)] = by[scName(s.name)] || []).push(s.name); });
+  $('pull').innerHTML = Object.entries(by).map(([sc, names]) =>
+    `<button data-pull="${esc(sc)}">⟳ ${esc(names.length > 1 ? bankOf(names[0]) : names[0])}</button>`).join('')
     + '<button data-reload="1" title="Обновить приложение">↻</button>';
 }
 $('pull').onclick = e => {
   const b = e.target.closest('button'); if (!b) return;
   if (b.dataset.reload) return location.reload();
-  location.href = 'shortcuts://run-shortcut?name=' + encodeURIComponent(scName(b.dataset.pull));
+  location.href = 'shortcuts://run-shortcut?name=' + encodeURIComponent(b.dataset.pull);
 };
 
 function renderSet() {
@@ -432,9 +435,9 @@ function renderSet() {
   // each bank shows what its Shortcut must be called and the exact Text line to paste into it
   const base = location.href.split('#')[0].split('?')[0];
   $('src-list').innerHTML = S.sources.map((s, i) => `<div class="row"><div style="min-width:0;flex:1">${esc(s.name)}<div class="m">${esc(s.key)} → ${esc(s.cat || '—')}</div>
-    <details><summary class="m" style="color:var(--acc)">команда для этого банка</summary>
+    <details><summary class="m" style="color:var(--acc)">команда для этой карты</summary>
     <div class="m">Название команды (как в «Командах», точь-в-точь):</div>
-    <input data-sc="${esc(s.name.split(' ')[0])}" value="${esc(scName(s.name.split(' ')[0]))}">
+    <input data-sc="${esc(s.name)}" value="${esc(scName(s.name))}">
     <div class="m">Строка для действия Text (в конец — URL Encoded Text):</div>
     <input readonly value="${esc(base)}#from=${encodeURIComponent(s.name.split(' ')[0])}&sms=" onclick="this.select()"></details></div>
     <button class="del" data-ds="${i}">×</button></div>`).join('') || '<p class="mut">Нет источников</p>';
@@ -450,8 +453,7 @@ $('src-list').onclick = e => { const i = e.target.dataset.ds; if (i != null) { S
 $('src-list').addEventListener('change', e => {
   const b = e.target.dataset.sc; if (!b) return;
   S.scNames = S.scNames || {}; S.scNames[b] = e.target.value.trim(); save();
-  document.querySelectorAll(`[data-sc="${b}"]`).forEach(i => { i.value = e.target.value; });
-  toast('Кнопка ⟳ ' + b + ' запускает «' + scName(b) + '»');
+  renderPull(); toast('⟳ ' + b + ' запускает «' + scName(b) + '»');
 });
 $('cat-list').onclick = e => {
   const i = e.target.dataset.dc; if (i == null) return;
