@@ -10,6 +10,10 @@ if (!S.seeded) {
   if (S.cur === '₽' && !S.tx.length) S.cur = 'SAR';
   S.seeded = 1;
 }
+if (S.seeded < 2) {
+  if (!S.rules.some(r => /salam/i.test(r.key))) S.rules.push({ key: '055 SALAM|BILLER: SALAM', cat: 'Интернет' });
+  S.seeded = 2;
+}
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { alert('Не удалось сохранить: ' + e.message); } };
 const $ = id => document.getElementById(id);
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -22,21 +26,32 @@ const hash = s => { let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33
 // 1 250,50 · 1,250.00 · 45.5
 const NUM = '(\\d{1,3}(?:,\\d{3})+(?=\\.\\d)|\\d{1,3}(?:[ \\u00a0\\u202f]\\d{3})+|\\d+)(?:[.,](\\d{1,2}))?';
 const CUR = '(?:sar|ر\\.?\\s?س|ريال|رس|₽|руб\\.?|р\\.|р\\b|rub|rur|\\$|usd|€|eur|₸|kzt|тг|uah|₴|грн|byn|gel|₾|amd|uzs|сум|try|₺|aed)';
-const INCOME = /(зачислен|пополнен|поступлен|перевод от|возврат|refund|credited|cashback|кешбэк|кэшбэк|deposit|incoming|received|salary|reversal|إيداع|ايداع|وارد|استرداد|راتب|مسترد)/i;
-const NOT_TX = /(код|code|пароль|password|otp|не сообщайте|رمز|كلمة المرور)/i;
+const INCOME = /(зачислен|пополнен|поступлен|перевод от|credited|cashback|кешбэк|кэшбэк|deposit|incoming|received|salary|إيداع|ايداع|وارد|راتب)/i;
+// a refund / reversal cancels a purchase: stored as a negative expense so totals net out
+const REFUND = /(возврат|refund|revers|استرداد|مسترد)/i;
+const NOT_TX = /(код|code|пароль|password|не сообщайте)/i;
+const OTP = /(otp|one time password|одноразов|رمز التحقق|رمز|كلمة المرور|logged in)/i;
 const CUT = /(баланс|остаток|доступно|дост\.|balance|avl|available|ост\.|бал\.|الرصيد|رصيد|المتاح)/i;
 const toNum = (a, b) => parseFloat(a.replace(/[ ,  ]/g, '') + (b ? '.' + b : ''));
 const latinDigits = s => s.replace(/[٠-٩]/g, c => c.charCodeAt(0) - 0x660).replace(/[۰-۹]/g, c => c.charCodeAt(0) - 0x6f0).replace(/٫/g, '.').replace(/٬/g, ',');
 
 function parseSms(text, from = '') {
   const raw = latinDigits(text.trim());
-  if (!raw || NOT_TX.test(raw) && !/(покупк|оплат|списан|purchase|payment|شراء|دفع)/i.test(raw)) return null;
-  const body = raw.split(CUT)[0];               // ignore balance part
-  let amount = null, m;
+  if (!raw || OTP.test(raw) || NOT_TX.test(raw) && !/(покупк|оплат|списан|purchase|payment|شراء|دفع)/i.test(raw)) return null;
+  // drop the balance figure (anb puts "Balance:" mid-message, before Total amount / At / On)
+  const body = raw.replace(new RegExp(CUT.source + '[^\\d\\n]{0,15}' + NUM + '(?:\\s?' + CUR + ')?', 'gi'), ' ');
+  let amount = null, m, note = '';
+  // abroad: "Amount:BHD 5 … Total amount:SAR 50.95" — the card's own total wins, the foreign amount goes to the note
+  const tot = new RegExp('(?:total amount|total|الإجمالي|المبلغ الإجمالي|итого)(?:\\s+in)?[:\\s]*(?:' + CUR + '[:\\s]*)?' + NUM, 'i');
+  if ((m = body.match(tot))) {
+    amount = toNum(m[1], m[2]);
+    const f = body.match(new RegExp('(?:amount[:\\s]*|\\sfor\\s+)([A-Z]{3})\\s?' + NUM, 'i'));
+    if (f && !/^sar$/i.test(f[1])) note = f[1].toUpperCase() + ' ' + toNum(f[2], f[3]);
+  }
   // "Amount: SAR 45.00" / "مبلغ: 45 ريال" → amount next to a currency → keyword before a number
-  const lab = new RegExp('(?:amount|amt|مبلغ|المبلغ|بمبلغ|сумма)[:\\s]*(?:' + CUR + '\\s?)?' + NUM, 'i');
+  const lab = new RegExp('(?:amount|amt|مبلغ|المبلغ|بمبلغ|сумма)(?:\\s+in)?[:\\s]*(?:' + CUR + '[:\\s]*)?' + NUM, 'i');
   const kw = new RegExp('(?:покупка|оплата|списание|списано|расход|снятие|выдача|перевод|purchase|payment|spent|debit|pokupka|oplata)[^\\d*]{0,40}?' + NUM, 'i');
-  if ((m = body.match(lab))) amount = toNum(m[1], m[2]);
+  if (amount == null && (m = body.match(lab))) amount = toNum(m[1], m[2]);
   if (amount == null && (m = body.match(new RegExp(NUM + '\\s?' + CUR, 'i')))) amount = toNum(m[1], m[2]);
   if (amount == null && (m = body.match(new RegExp(CUR + '\\s?' + NUM, 'i')))) amount = toNum(m[1], m[2]);
   if (amount == null && (m = body.match(kw))) amount = toNum(m[1], m[2]);
@@ -45,7 +60,7 @@ function parseSms(text, from = '') {
   // date inside SMS: 24.10.26 14:05 · 24/10/2026 · 2026-10-24 14:05
   let date = new Date();
   const cands = [...raw.matchAll(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[ T]+(\d{1,2}):(\d{2}))?/g)].map(m => [+m[1], +m[2], +m[3], m[4], m[5]])
-    .concat([...raw.matchAll(/(?<![\d.,])(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?(?![\d,])(?:\s+(\d{1,2}):(\d{2}))?/g)].map(m => [m[3] ? +m[3] : date.getFullYear(), +m[2], +m[1], m[4], m[5]]));
+    .concat([...raw.matchAll(/(?<![\d.,])(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?(?![\d,])(?:\s+(\d{1,2}):(\d{2}))?/g)].filter(m => m[3] || m[4]).map(m => [m[3] ? +m[3] : date.getFullYear(), +m[2], +m[1], m[4], m[5]]));
   for (let [y, mo, dd, hh, mi] of cands) {
     if (y < 100) y += 2000;
     const d = new Date(y, mo - 1, dd, hh ? +hh : 12, mi ? +mi : 0);
@@ -54,7 +69,7 @@ function parseSms(text, from = '') {
 
   // merchant
   let merchant = '';
-  if ((m = body.match(/(?:\bв\b|\bat\b|магазин|merchant|لدى|عند|المتجر|التاجر|من(?=:))[:\s]+([^,;\n]{2,40}?)(?=[.,;\n]|\s+\d|$)/i))) merchant = m[1];
+  if ((m = body.match(/(?:\bв\b|\bat\b|магазин|merchant|biller|لدى|عند|المتجر|التاجر|من(?=:))[:\s]+([^,;\n]{2,40}?)(?=[.,;\n]|\s+\d|\s+for\s|$)/i))) merchant = m[1];
   if (!merchant && (m = body.match(/\b([A-Z][A-Z0-9*'&\-. ]{3,30})\b/))) merchant = m[1];
   merchant = merchant.replace(new RegExp(CUR, 'ig'), '').replace(/\s+/g, ' ').trim();
 
@@ -62,11 +77,12 @@ function parseSms(text, from = '') {
   const src = S.sources.find(s => s.key.split('|').some(k => k.trim() && hay.includes(k.trim().toLowerCase())));
   if (!src && S.onlyKnown) return null;
   const rule = S.rules.find(r => r.key.split('|').some(k => k.trim() && hay.includes(k.trim().toLowerCase())));
+  if (REFUND.test(body)) amount = -amount;
   return {
     id: uid(), date: date.toISOString(), amount, merchant,
     source: src ? src.name : (from || 'Другое'),
     category: rule ? rule.cat : (src && src.cat) || 'Без категории',
-    income: INCOME.test(body), origin: 'sms', raw, h: hash(raw)
+    note, income: !REFUND.test(body) && INCOME.test(body), origin: 'sms', raw, h: hash(raw)
   };
 }
 
@@ -138,7 +154,7 @@ function render() {
   const max = Math.max(1, ...Object.values(byB)), bw = (W - 4) / Math.max(1, keys.length);
   let h = '';
   keys.forEach((k, i) => {
-    const v = byB[k], bh = (H - pad - 8) * v / max, x = 2 + i * bw;
+    const v = byB[k], bh = (H - pad - 8) * Math.max(0, v) / max, x = 2 + i * bw;
     const on = st.fBucket === k, dim = st.fBucket && !on;
     h += `<rect data-b="${k}" x="${x + bw * .12}" y="${H - pad - bh}" width="${Math.max(1, bw * .76)}" height="${Math.max(bh, v ? 1 : 0)}" rx="2" fill="${dim ? '#9ca3af55' : 'var(--acc)'}"/>`;
     h += `<rect data-b="${k}" x="${x}" y="0" width="${bw}" height="${H}" fill="transparent"/>`;
@@ -157,7 +173,7 @@ function render() {
   // donut
   const inBucket = t => !st.fBucket || bucketOf(new Date(t.date)) === st.fBucket;
   const groups = {}; inP.filter(inBucket).forEach(t => groups[t[st.split]] = (groups[t[st.split]] || 0) + t.amount);
-  let arr = Object.entries(groups).sort((x, y) => y[1] - x[1]);
+  let arr = Object.entries(groups).filter(x => x[1] > 0).sort((x, y) => y[1] - x[1]);
   if (arr.length > 9) { const rest = arr.slice(9).reduce((s, x) => s + x[1], 0); arr = arr.slice(0, 9).concat([['Прочее', rest]]); }
   const total = arr.reduce((s, x) => s + x[1], 0);
   let ang = -Math.PI / 2, d = '';
@@ -182,9 +198,9 @@ function render() {
     .filter(t => inBucket(t) && (!st.fKey || t[st.split] === st.fKey))
     .sort((x, y) => y.date.localeCompare(x.date)).slice(0, 300);
   $('list').innerHTML = list.length ? list.map(t => `<div class="row"><div><div>${esc(t.merchant || t.note || t.category)}</div>
-    <div class="m">${new Date(t.date).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ${esc(t.source)} ·
+    <div class="m">${new Date(t.date).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ${esc(t.source)}${t.merchant && t.note ? " · " + esc(t.note) : ""} ·
     <select data-cat="${t.id}" style="width:auto;padding:2px;margin:0;font-size:12px">${catOptions(t.category)}</select></div></div>
-    <div class="amt ${t.income ? 'inc' : ''}">${t.income ? '+' : '−'}${fmt(t.amount)}</div><button class="del" data-del="${t.id}">×</button></div>`).join('')
+    <div class="amt ${t.income ? 'inc' : ''}">${t.income || t.amount < 0 ? '+' : '−'}${fmt(Math.abs(t.amount))}</div><button class="del" data-del="${t.id}">×</button></div>`).join('')
     : '<p class="mut">Пока пусто</p>';
 
   // datalists
@@ -245,7 +261,7 @@ $('s-parse').onclick = () => {
     let from = '', text = block.trim(); const m = text.match(/^(?:от|from)\s*:\s*(.+)\n/i);
     if (m) { from = m[1].trim(); text = text.slice(m[0].length); }
     const r = addSms(text, from);
-    return r.ok ? `<div class="row"><span>${esc(r.t.source)} · ${esc(r.t.merchant || r.t.category)}</span><b>${r.t.income ? '+' : '−'}${fmt(r.t.amount)}</b></div>`
+    return r.ok ? `<div class="row"><span>${esc(r.t.source)} · ${esc(r.t.merchant || r.t.category)}</span><b>${r.t.income || r.t.amount < 0 ? '+' : '−'}${fmt(Math.abs(r.t.amount))}</b></div>`
       : `<div class="row mut"><span>${esc(text.slice(0, 50))}…</span><span>${r.msg}</span></div>`;
   });
   $('s-out').innerHTML = out.join(''); $('s-text').value = '';
