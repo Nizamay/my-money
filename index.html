@@ -46,12 +46,13 @@ svg text{fill:var(--mut);font-size:10px}
 </style>
 </head>
 <body>
-<header>Мои деньги <small style="font-size:11px;color:var(--mut);font-weight:400">v12</small></header>
+<header>Мои деньги <small style="font-size:11px;color:var(--mut);font-weight:400">v13</small></header>
 <main>
 
 <!-- ===== STATS ===== -->
 <section class="tab on" id="t-stats">
   <div class="seg" id="pull" style="margin:6px 0"></div>
+  <div class="card" id="credit" style="display:none"></div>
   <div class="kpis">
     <div class="kpi"><small>Сегодня</small><b id="k-day">0</b></div>
     <div class="kpi"><small>Неделя</small><b id="k-week">0</b></div>
@@ -155,6 +156,7 @@ svg text{fill:var(--mut);font-size:10px}
     <div id="src-list"></div>
     <div class="grid2"><input id="n-name" placeholder="Название (Карта Visa)"><input id="n-key" placeholder="Ключ (BANK|*1234)"></div>
     <input id="n-cat" list="dl-cat" placeholder="Категория по умолчанию">
+    <select id="n-type"><option value="debit">Дебетовая карта / счёт</option><option value="credit">Кредитная карта (гасить каждый месяц)</option></select>
     <button class="btn ghost" id="n-add">Добавить источник</button>
     <label class="mut"><input type="checkbox" id="only-known" style="width:auto"> Игнорировать SMS от неизвестных источников</label>
   </div>
@@ -189,8 +191,9 @@ svg text{fill:var(--mut);font-size:10px}
   <button data-t="set"><span>⚙️</span>Настройки</button>
 </nav>
 
-<script src="app.js?v=12"></script>
-<script src="scan.js?v=12"></script>
-<script src="savings.js?v=12"></script>
+<script src="app.js?v=13"></script>
+<script src="scan.js?v=13"></script>
+<script src="savings.js?v=13"></script>
+<script src="cards.js?v=13"></script>
 </body>
 </html>

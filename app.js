@@ -14,6 +14,20 @@ if (S.seeded < 2) {
   if (!S.rules.some(r => /salam/i.test(r.key))) S.rules.push({ key: '055 SALAM|BILLER: SALAM', cat: 'Интернет' });
   S.seeded = 2;
 }
+if (S.seeded < 3) {
+  const old = S.sources.filter(s => !/^(anb|sab)$/i.test(s.name));
+  S.sources = [
+    { name: 'anb кредитка', key: '7982', cat: '', type: 'credit' },
+    { name: 'anb дебетовая', key: '2150|0012', cat: '', type: 'debit' },
+    { name: 'SAB кредитка', key: '2276|sab', cat: '', type: 'credit' }].concat(old);
+  S.tx.forEach(t => {
+    const r = (t.raw || '').toLowerCase();
+    if (/7982/.test(r)) t.source = 'anb кредитка';
+    else if (/2150|0012/.test(r)) t.source = 'anb дебетовая';
+    else if (/2276/.test(r) || /^sab$/i.test(t.source)) t.source = 'SAB кредитка';
+  });
+  S.seeded = 3;
+}
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { alert('Не удалось сохранить: ' + e.message); } };
 const $ = id => document.getElementById(id);
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -29,6 +43,8 @@ const CUR = '(?:sar|ر\\.?\\s?س|ريال|رس|₽|руб\\.?|р\\.|р\\b|rub|ru
 const INCOME = /(credit transfer|зачислен|пополнен|поступлен|перевод от|credited|cashback|кешбэк|кэшбэк|deposit|incoming|received|salary|إيداع|ايداع|وارد|راتب)/i;
 // a refund / reversal cancels a purchase: stored as a negative expense so totals net out
 const REFUND = /(возврат|refund|revers|استرداد|مسترد)/i;
+// paying off a credit card moves money between own cards: neither an expense nor an income
+const PAYOFF = /(credit card payment|card payment|payment to (?:your |the )?(?:credit )?card|card repayment|payment received|سداد|تسديد|погашени)/i;
 const NOT_TX = /(код|code|пароль|password|не сообщайте)/i;
 const OTP = /(otp|one time password|одноразов|رمز التحقق|رمز|كلمة المرور|logged in)/i;
 const CUT = /(баланс|остаток|доступно|дост\.|balance|avl|available|ост\.|бал\.|الرصيد|رصيد|المتاح)/i;
@@ -87,10 +103,10 @@ function parseSms(text, from = '') {
   return {
     id: uid(), date: date.toISOString(), amount, merchant,
     source: src ? src.name : (from || 'Другое'),
-    category: rule ? rule.cat : /outgoing transfer|تحويل صادر|исходящий перевод/i.test(body) ? 'Переводы'
+    category: rule ? rule.cat : PAYOFF.test(body) ? 'Погашение кредитки' : /outgoing transfer|تحويل صادر|исходящий перевод/i.test(body) ? 'Переводы'
       : !REFUND.test(body) && INCOME.test(body) ? (/cashback|кешбэк|кэшбэк/i.test(body) ? 'Кешбэк' : /salary|راتب|зарплат/i.test(body) ? 'Зарплата' : 'Поступления')
       : /withdraw|\batm\b|cash withdrawal|سحب|صراف|снятие налич|банкомат/i.test(body) ? 'Наличные' : (src && src.cat) || 'Без категории',
-    note, income: !REFUND.test(body) && INCOME.test(body), origin: 'sms', raw, h: hash(raw)
+    note, income: !PAYOFF.test(body) && !REFUND.test(body) && INCOME.test(body), transfer: PAYOFF.test(body), origin: 'sms', raw, h: hash(raw)
   };
 }
 
@@ -143,7 +159,7 @@ function buckets(a, b) {
 const COLORS = ['#2563eb', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#64748b'];
 
 function render() {
-  const exp = S.tx.filter(t => !t.income);
+  const exp = S.tx.filter(t => !t.income && !t.transfer);
   const now = new Date(), today = ymd(now);
   const wk = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (now.getDay() + 6) % 7);
   const mo = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -178,7 +194,7 @@ function render() {
   svg.innerHTML = h;
   const tot = inP.filter(inKey).reduce((s, t) => s + t.amount, 0);
   const nB = keys.length || 1;
-  const incP = S.tx.filter(t => t.income && new Date(t.date) >= a && new Date(t.date) < b).reduce((s, t) => s + t.amount, 0);
+  const incP = S.tx.filter(t => t.income && !t.transfer && new Date(t.date) >= a && new Date(t.date) < b).reduce((s, t) => s + t.amount, 0);
   $('ptotal').textContent = `Расходы: ${fmt(tot)} · доходы: +${fmt(incP)} · в среднем ${fmt(tot / nB)} за ${{ day: 'день', week: 'неделю', month: 'месяц' }[st.group]}` + (st.fBucket ? ` · выбрано: ${fmt(byB[st.fBucket] || 0)}` : '');
 
   // donut
@@ -335,7 +351,9 @@ $('b-exp').onclick = () => {
 /* ---------- settings ---------- */
 /* ---------- «Подгрузить»: run the user's Shortcut «История <банк>», which reopens the app with the SMS ---------- */
 function renderPull() {
-  $('pull').innerHTML = S.sources.map(s => `<button data-pull="${esc(s.name)}">⟳ ${esc(s.name)}</button>`).join('')
+  // one Shortcut per bank: «anb кредитка» and «anb дебетовая» share «История anb»
+  const banks = [...new Set(S.sources.map(s => s.name.split(' ')[0]))];
+  $('pull').innerHTML = banks.map(n => `<button data-pull="${esc(n)}">⟳ ${esc(n)}</button>`).join('')
     + '<button data-reload="1" title="Обновить приложение">↻</button>';
 }
 $('pull').onclick = e => {
@@ -350,15 +368,15 @@ function renderSet() {
   const base = location.href.split('#')[0].split('?')[0];
   $('src-list').innerHTML = S.sources.map((s, i) => `<div class="row"><div style="min-width:0;flex:1">${esc(s.name)}<div class="m">${esc(s.key)} → ${esc(s.cat || '—')}</div>
     <details><summary class="m" style="color:var(--acc)">команда для этого банка</summary>
-    <div class="m">Название команды: <b>История ${esc(s.name)}</b><br>Строка для действия Text (в конец — URL Encoded Text):</div>
-    <input readonly value="${esc(base)}#from=${encodeURIComponent(s.name)}&sms=" onclick="this.select()"></details></div>
+    <div class="m">Название команды: <b>История ${esc(s.name.split(' ')[0])}</b><br>Строка для действия Text (в конец — URL Encoded Text):</div>
+    <input readonly value="${esc(base)}#from=${encodeURIComponent(s.name.split(' ')[0])}&sms=" onclick="this.select()"></details></div>
     <button class="del" data-ds="${i}">×</button></div>`).join('') || '<p class="mut">Нет источников</p>';
   $('rule-list').innerHTML = S.rules.map((r, i) => `<div class="row"><div>${esc(r.key)}<div class="m">→ ${esc(r.cat)}</div></div><button class="del" data-dr="${i}">×</button></div>`).join('') || '<p class="mut">Нет правил</p>';
   $('cur').value = S.cur; $('only-known').checked = S.onlyKnown;
   $('hook').value = location.href.split('#')[0] + '#from=ОТПРАВИТЕЛЬ&sms=ТЕКСТ';
 }
 $('n-add').onclick = () => { const name = $('n-name').value.trim(), key = $('n-key').value.trim(); if (!name || !key) return alert('Название и ключ');
-  S.sources.push({ name, key, cat: $('n-cat').value.trim() }); save(); $('n-name').value = $('n-key').value = $('n-cat').value = ''; renderSet(); };
+  S.sources.push({ name, key, cat: $('n-cat').value.trim(), type: $('n-type').value }); save(); $('n-name').value = $('n-key').value = $('n-cat').value = ''; renderSet(); };
 $('r-add').onclick = () => { const key = $('r-key').value.trim(), cat = $('r-cat').value.trim(); if (!key || !cat) return;
   S.rules.push({ key, cat }); save(); $('r-key').value = $('r-cat').value = ''; renderSet(); };
 $('src-list').onclick = e => { const i = e.target.dataset.ds; if (i != null) { S.sources.splice(+i, 1); save(); renderSet(); } };
