@@ -46,7 +46,7 @@ svg text{fill:var(--mut);font-size:10px}
 </style>
 </head>
 <body>
-<header>Мои деньги <small style="font-size:11px;color:var(--mut);font-weight:400">v27</small></header>
+<header>Мои деньги <small style="font-size:11px;color:var(--mut);font-weight:400">v28</small></header>
 <main>
 
 <!-- ===== STATS ===== -->
@@ -118,6 +118,14 @@ svg text{fill:var(--mut);font-size:10px}
 
 <!-- ===== SAVINGS ===== -->
 <section class="tab" id="t-sav">
+  <div class="card" id="c-top"></div>
+  <div class="seg" id="c-seg" style="margin:6px 0"><button data-c="sav" class="on">🏦 Накопления</button><button data-c="fam">👨‍👩‍👧 Семья</button></div>
+  <div id="c-fam" style="display:none">
+    <div class="card"><h3>Семья</h3><p class="mut">Кому отдаю кэш. Эти деньги считаются тратами (категория «Семья»).</p><div id="f-list"></div>
+      <div class="grid2"><input id="f-name" placeholder="Имя (Мама, Жена…)"><button class="btn ghost" id="f-add">Добавить</button></div></div>
+    <div class="card" id="f-hist" style="display:none"></div>
+  </div>
+  <div id="c-sav">
   <div class="kpis" style="grid-template-columns:1fr"><div class="kpi"><small>Всего накоплено</small><b id="v-total">0</b></div></div>
   <div class="card">
     <svg id="v-donut" viewBox="0 0 200 200" width="100%" height="200"></svg>
@@ -130,6 +138,7 @@ svg text{fill:var(--mut);font-size:10px}
     <button class="btn ghost" id="v-add">Создать</button>
   </div>
   <div class="card" id="v-hist" style="display:none"></div>
+  </div>
 </section>
 
 <!-- ===== IMPORT ===== -->
@@ -198,15 +207,16 @@ svg text{fill:var(--mut);font-size:10px}
 <nav>
   <button data-t="stats" class="on"><span>📊</span>Статистика</button>
   <button data-t="add"><span>➕</span>Добавить</button>
-  <button data-t="sav"><span>🏦</span>Накопления</button>
+  <button data-t="sav"><span>💵</span>Кэш</button>
   <button data-t="import"><span>📥</span>Импорт</button>
   <button data-t="set"><span>⚙️</span>Настройки</button>
 </nav>
 
-<script src="app.js?v=27"></script>
-<script src="scan.js?v=27"></script>
-<script src="savings.js?v=27"></script>
-<script src="cards.js?v=27"></script>
-<script src="backup.js?v=27"></script>
+<script src="app.js?v=28"></script>
+<script src="scan.js?v=28"></script>
+<script src="savings.js?v=28"></script>
+<script src="cards.js?v=28"></script>
+<script src="backup.js?v=28"></script>
+<script src="cash.js?v=28"></script>
 </body>
 </html>

@@ -57,7 +57,8 @@ const STATEMENT = /statement (?:has been )?issued|كشف حساب|выписка
 const HOLD = /pending/i;
 // a confirmation code that names a shop ("OTP … Amount: SAR 2084 At: www.extra.com") may be the only trace of a purchase:
 // it is offered in the review unticked, never counted on its own
-const isInfo = t => t.kind === 'statement' || t.kind === 'hold' || t.kind === 'otp';
+const CASH = /withdraw|\batm\b|سحب|صراف|снятие налич|банкомат/i;
+const isInfo = t => t.kind === 'statement' || t.kind === 'hold' || t.kind === 'otp' || t.kind === 'cash';
 // well-known shops and services → a suggested category (the user's own rules always win)
 const KNOWN = [
   [/\bub(?:e)?r\b|careem|bolt|jeeny|taxi/i, 'Такси'],
@@ -177,7 +178,7 @@ function parseSms(text, from = '') {
       : !REFUND.test(body) && INCOME.test(body) ? (/cashback|кешбэк|кэшбэк/i.test(body) ? 'Кешбэк' : /salary|راتب|зарплат/i.test(body) ? 'Зарплата' : 'Поступления')
       : /withdraw|\batm\b|cash withdrawal|سحب|صراف|снятие налич|банкомат/i.test(body) ? 'Наличные'
       : HOLD.test(merchant) ? 'Блокировка (pending)' : guessCat(merchant) || (src && src.cat) || 'Без категории',
-    kind: otp ? 'otp' : HOLD.test(merchant) ? 'hold' : undefined,
+    kind: otp ? 'otp' : HOLD.test(merchant) ? 'hold' : !INCOME.test(body) && CASH.test(body) ? 'cash' : undefined,
     note, income: !PAYOFF.test(body) && !REFUND.test(body) && INCOME.test(body), transfer: PAYOFF.test(body), origin: 'sms', raw, h: hash(raw)
   };
 }
@@ -318,7 +319,7 @@ function render() {
 const CATS = [['Продукты', '🛒'], ['Кафе и рестораны', '☕'], ['Доставка еды', '🍔'], ['Такси', '🚕'], ['Транспорт', '🚌'], ['Топливо', '⛽'],
   ['Авто', '🚗'], ['Дом', '🏠'], ['Коммунальные', '💡'], ['Интернет', '🌐'], ['Связь', '📱'], ['Здоровье', '💊'], ['Красота', '💇'],
   ['Одежда', '👕'], ['Покупки', '🛍️'], ['Развлечения', '🎬'], ['Спорт', '🏋️'], ['Путешествия', '✈️'], ['Образование', '🎓'],
-  ['Дети', '🧸'], ['Подарки', '🎁'], ['Подписки', '🧾'], ['Страховка', '🛡️'], ['Штрафы', '🚨'], ['Госуслуги', '🏛️'], ['Переводы', '💸'], ['Наличные', '💵'],
+  ['Дети', '🧸'], ['Семья', '👨‍👩‍👧'], ['Подарки', '🎁'], ['Подписки', '🧾'], ['Страховка', '🛡️'], ['Штрафы', '🚨'], ['Госуслуги', '🏛️'], ['Переводы', '💸'], ['Наличные', '💵'],
   ['Погашение кредитки', '💳'], ['Счёт по кредитке', '🧾'], ['Блокировка (pending)', '⏳'], ['Зарплата', '💰'], ['Кешбэк', '🎉'], ['Поступления', '📥'], ['Без категории', '❓']];
 const catIcon = n => ((S.cats || []).find(c => c.name === n) || {}).icon || (CATS.find(c => c[0] === n) || [])[1] || '🏷️';
 const allCats = () => [...new Set(CATS.map(c => c[0]).concat((S.cats || []).map(c => c.name),
