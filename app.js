@@ -460,11 +460,12 @@ function renderPull() {
   S.sources.forEach(s => { (by[scName(s.name)] = by[scName(s.name)] || []).push(s.name); });
   $('pull').innerHTML = Object.entries(by).map(([sc, names]) =>
     `<button data-pull="${esc(sc)}">⟳ ${esc(names.length > 1 ? bankOf(names[0]) : names[0])}</button>`).join('')
-    + '<button data-reload="1" title="Обновить приложение">↻</button>';
+    + '<button data-paste="1" title="Вставить SMS из буфера">📋</button><button data-reload="1" title="Обновить приложение">↻</button>';
 }
 $('pull').onclick = e => {
   const b = e.target.closest('button'); if (!b) return;
   if (b.dataset.reload) return location.reload();
+  if (b.dataset.paste) return pasteIntake();
   location.href = 'shortcuts://run-shortcut?name=' + encodeURIComponent(b.dataset.pull);
 };
 
@@ -519,25 +520,37 @@ function intake() {
   if (!location.hash.includes('sms=')) return;
   const p = new URLSearchParams(location.hash.slice(1));
   const from = p.get('from') || '', text = p.get('sms') || '';
-  // many SMS at once (Shortcuts "Find Messages" → joined with ###): show them for review
-  const parts = text.split(/\n?\s*#{3,}\s*\n?/).map(x => x.trim()).filter(Boolean);
-  if (parts.length > 1) {
-    history.replaceState(null, '', location.pathname + location.search);
-    document.querySelector('nav [data-t="add"]').click();
-    let found = [];
-    try {
-      const all = parts.map(x => parseSms(x, from));
-      found = all.filter(Boolean);
-      review(found, parts.filter((x, i) => !all[i]));
-      window.scrollTo(0, 0);
-    } catch (err) { alert('Ошибка разбора: ' + err.message); }
-    toast(`Получено SMS: ${parts.length}, распознано операций: ${found.length}`);
-    return;
-  }
+  history.replaceState(null, '', location.pathname + location.search);
+  if (bulkIntake(text, from)) return;
   const r = addSms(text, from);
   toast(r.ok ? `${r.t.income ? 'Доход' : 'Расход'} ${fmt(r.t.amount)} · ${r.t.source}` : 'SMS: ' + r.msg);
-  history.replaceState(null, '', location.pathname + location.search);
   render();
+  // a tab the automation opened for one SMS closes itself when Safari allows it
+  setTimeout(() => { try { window.close(); } catch (e) {} }, 2500);
+}
+
+// many SMS at once (Shortcuts "Find Messages" → joined with ###): show them for review
+function bulkIntake(text, from) {
+  const parts = text.split(/\n?\s*#{3,}\s*\n?/).map(x => x.trim()).filter(Boolean);
+  if (parts.length < 2) return false;
+  document.querySelector('nav [data-t="add"]').click();
+  let found = [];
+  try {
+    const all = parts.map(x => parseSms(x, from));
+    found = all.filter(Boolean);
+    review(found, parts.filter((x, i) => !all[i]));
+    window.scrollTo(0, 0);
+  } catch (err) { alert('Ошибка разбора: ' + err.message); }
+  toast(`Получено SMS: ${parts.length}, распознано операций: ${found.length}`);
+  return true;
+}
+
+// the same without a new tab: the Shortcut copies the SMS, the user comes back and taps 📋
+async function pasteIntake() {
+  let text = '';
+  try { text = await navigator.clipboard.readText(); } catch (e) { return alert('Нет доступа к буферу обмена — разрешите «Вставить»'); }
+  if (!text.trim()) return toast('Буфер обмена пуст');
+  if (!bulkIntake(text, '')) { const r = addSms(text, ''); toast(r.ok ? `${r.t.income ? 'Доход' : 'Расход'} ${fmt(r.t.amount)} · ${r.t.source}` : 'SMS: ' + r.msg); render(); }
 }
 window.addEventListener('hashchange', intake);
 
