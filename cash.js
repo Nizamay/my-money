@@ -37,7 +37,8 @@ function renderCash() {
     <div class="row"><span>👨‍👩‍👧 Семье</span><span>${fmt(fam)}</span></div>
     <div class="row"><span>🧍 Потратил сам</span><span>${fmt(me)}</span></div>
     <div class="row"><span>🤝 Дал в долг</span><span>${fmt(ln)}${rt ? ` <span class="m">(вернули ${fmt(rt)})</span>` : ''}</span></div>
-    <div class="row"><b>На руках, не распределено</b><b style="color:${left < -0.005 ? 'var(--bad)' : 'var(--acc)'}">${fmt(left)}</b></div>
+    <div class="row"><b>На руках, не распределено</b><b style="color:var(--acc)">${fmt(Math.max(0, left))}</b></div>
+    ${left < -0.005 ? `<div class="m" style="color:#b45309">⚠️ Распределено на ${fmt(-left)} больше, чем снято за период: часть денег, видимо, из прошлого периода или не из снятого кэша. Выберите период шире или отметьте пополнение копилки как «не из снятого кэша».</div>` : ''}
     <div class="grid2"><button class="btn ghost" id="c-wd">＋ Снял кэш</button><button class="btn ghost" id="c-me">🧍 Потратил сам</button></div>
     <button class="btn ghost" id="c-loan">🤝 Дал в долг</button>
     ${S.loans.filter(l => !l.back).length ? '<h3 style="margin-top:12px">Мне должны</h3>' + S.loans.filter(l => !l.back).map(l =>

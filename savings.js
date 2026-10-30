@@ -84,6 +84,7 @@ function move(id, sign) {
     <h3>${sign > 0 ? 'Пополнить' : 'Снять из'} «${esc(f.name)}»</h3>
     <div style="display:flex;gap:8px"><input id="m-v" type="number" inputmode="decimal" placeholder="Сумма" style="flex:1">${curSel('m-c')}</div>
     <input id="m-n" placeholder="Комментарий (необязательно)">
+    ${sign > 0 ? '<label class="mut" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="m-cash" checked style="width:auto;margin:0"> из снятого кэша (уменьшит «на руках»)</label>' : ''}
     <div class="m" id="m-eq"></div>
     <button class="btn" id="m-ok">${sign > 0 ? 'Пополнить' : 'Снять'}</button><button class="btn ghost" id="m-x">Отмена</button></div>`;
   document.body.appendChild(box);
@@ -95,7 +96,7 @@ function move(id, sign) {
   q('#m-ok').onclick = () => {
     const v = parseFloat(String(q('#m-v').value).replace(',', '.')), cur = q('#m-c').value;
     if (!(v > 0)) return q('#m-v').focus();
-    f.ops.push({ id: uid(), date: new Date().toISOString(), amount: sign * Math.round(toSar(v, cur) * 100) / 100, orig: sign * v, cur, note: q('#m-n').value.trim() });
+    f.ops.push({ id: uid(), date: new Date().toISOString(), amount: sign * Math.round(toSar(v, cur) * 100) / 100, orig: sign * v, cur, note: q('#m-n').value.trim(), cash: sign > 0 ? q('#m-cash').checked : undefined });
     box.remove(); save(); renderSav(); if (window.renderCash) renderCash();
   };
 }
