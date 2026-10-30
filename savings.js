@@ -51,22 +51,37 @@ function renderSav() {
     `<div class="grid2"><button class="btn ghost" data-ren="${f.id}">Переименовать / цель</button><button class="btn ghost" style="color:var(--bad);border-color:var(--bad)" data-delf="${f.id}">Удалить копилку</button></div>`;
 }
 
+// top-up / withdrawal sheet: amount, currency (SAR by default), comment
+const curSel = id => `<select id="${id}" style="width:auto">${SAV_CUR.map(c => `<option${c === 'SAR' ? ' selected' : ''}>${c}</option>`).join('')}</select>`;
 function move(id, sign) {
   const f = S.sav.find(x => x.id === id); if (!f) return;
-  const raw = String(prompt(`${sign > 0 ? 'Пополнить' : 'Снять из'} «${f.name}». Сумма и валюта, например: 500, 100 USD, 20000 RUB`) || '');
-  const v = parseFloat(raw.replace(',', '.').replace(/[^\d.]/g, ''));
-  if (!(v > 0)) return;
-  const cur = /usd|\$|дол/i.test(raw) ? 'USD' : /rub|руб|₽/i.test(raw) ? 'RUB' : 'SAR';
-  const note = prompt('Комментарий (необязательно)') || '';
-  f.ops.push({ id: uid(), date: new Date().toISOString(), amount: sign * Math.round(toSar(v, cur) * 100) / 100, orig: sign * v, cur, note });
-  save(); renderSav(); if (window.renderCash) renderCash();
+  const box = document.createElement('div');
+  box.style.cssText = 'position:fixed;inset:0;background:#0007;z-index:20;display:flex;align-items:flex-end';
+  box.innerHTML = `<div class="card" style="width:100%;margin:0;border-radius:16px 16px 0 0;padding-bottom:calc(16px + env(safe-area-inset-bottom))">
+    <h3>${sign > 0 ? 'Пополнить' : 'Снять из'} «${esc(f.name)}»</h3>
+    <div style="display:flex;gap:8px"><input id="m-v" type="number" inputmode="decimal" placeholder="Сумма" style="flex:1">${curSel('m-c')}</div>
+    <input id="m-n" placeholder="Комментарий (необязательно)">
+    <div class="m" id="m-eq"></div>
+    <button class="btn" id="m-ok">${sign > 0 ? 'Пополнить' : 'Снять'}</button><button class="btn ghost" id="m-x">Отмена</button></div>`;
+  document.body.appendChild(box);
+  const q = s => box.querySelector(s);
+  const eq = () => { const v = parseFloat(q('#m-v').value) || 0, c = q('#m-c').value; q('#m-eq').textContent = v ? '= ' + tri(toSar(v, c)) : ''; };
+  q('#m-v').oninput = q('#m-c').onchange = eq; q('#m-v').focus();
+  q('#m-x').onclick = () => box.remove();
+  box.onclick = e => { if (e.target === box) box.remove(); };
+  q('#m-ok').onclick = () => {
+    const v = parseFloat(String(q('#m-v').value).replace(',', '.')), cur = q('#m-c').value;
+    if (!(v > 0)) return q('#m-v').focus();
+    f.ops.push({ id: uid(), date: new Date().toISOString(), amount: sign * Math.round(toSar(v, cur) * 100) / 100, orig: sign * v, cur, note: q('#m-n').value.trim() });
+    box.remove(); save(); renderSav(); if (window.renderCash) renderCash();
+  };
 }
 
 $('v-add').onclick = () => {
   const name = $('v-name').value.trim(); if (!name) return alert('Название копилки');
-  const goal = parseFloat($('v-goal').value) || 0;
+  const goal = Math.round(toSar(parseFloat($('v-goal').value) || 0, $('v-gcur').value) * 100) / 100;   // the goal is kept in SAR
   S.sav.push({ id: uid(), name, goal, ops: [] }); save();
-  $('v-name').value = $('v-goal').value = ''; renderSav();
+  $('v-name').value = $('v-goal').value = ''; $('v-gcur').value = 'SAR'; renderSav();
 };
 document.getElementById('t-sav').onclick = e => {
   const t = e.target.closest('[data-plus],[data-minus],[data-f],[data-dop],[data-ren],[data-delf]'); if (!t) return;

@@ -46,7 +46,7 @@ svg text{fill:var(--mut);font-size:10px}
 </style>
 </head>
 <body>
-<header>Мои деньги <small style="font-size:11px;color:var(--mut);font-weight:400">v32</small></header>
+<header>Мои деньги <small style="font-size:11px;color:var(--mut);font-weight:400">v34</small></header>
 <main>
 
 <!-- ===== STATS ===== -->
@@ -134,7 +134,7 @@ svg text{fill:var(--mut);font-size:10px}
   <div class="card"><h3>Копилки</h3><div id="v-list"></div></div>
   <div class="card">
     <h3>Новая копилка</h3>
-    <div class="grid2"><input id="v-name" placeholder="Подушка безопасности"><input id="v-goal" type="number" inputmode="decimal" placeholder="Цель (необязательно)"></div>
+    <div class="grid2"><input id="v-name" placeholder="Подушка безопасности"><div style="display:flex;gap:6px"><input id="v-goal" type="number" inputmode="decimal" placeholder="Цель" style="flex:1"><select id="v-gcur" style="width:auto"><option selected>SAR</option><option>USD</option><option>RUB</option></select></div></div>
     <button class="btn ghost" id="v-add">Создать</button>
   </div>
   <div class="card" id="v-hist" style="display:none"></div>
@@ -212,11 +212,11 @@ svg text{fill:var(--mut);font-size:10px}
   <button data-t="set"><span>⚙️</span>Настройки</button>
 </nav>
 
-<script src="app.js?v=32"></script>
-<script src="scan.js?v=32"></script>
-<script src="savings.js?v=32"></script>
-<script src="cards.js?v=32"></script>
-<script src="backup.js?v=32"></script>
-<script src="cash.js?v=32"></script>
+<script src="app.js?v=34"></script>
+<script src="scan.js?v=34"></script>
+<script src="savings.js?v=34"></script>
+<script src="cards.js?v=34"></script>
+<script src="backup.js?v=34"></script>
+<script src="cash.js?v=34"></script>
 </body>
 </html>

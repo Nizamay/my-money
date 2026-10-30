@@ -18,10 +18,14 @@ const sinceStart = t => new Date(t.date) >= cashStart();
 const cashIn = () => S.tx.filter(t => t.kind === 'cash' && sinceStart(t)).reduce((s, t) => s + t.amount, 0);
 const toFamily = () => S.tx.filter(t => t.origin === 'cash' && t.category === 'Семья' && sinceStart(t)).reduce((s, t) => s + t.amount, 0);
 const spentMe = () => S.tx.filter(t => t.origin === 'cash' && t.category !== 'Семья' && sinceStart(t)).reduce((s, t) => s + t.amount, 0);
+// money lent from cash: not spending — it is expected back; a returned loan is cash in hand again
+S.loans = S.loans || [];
+const lent = () => S.loans.filter(l => new Date(l.date) >= cashStart()).reduce((s, l) => s + l.amount, 0);
+const returned = () => S.loans.filter(l => l.back && new Date(l.back) >= cashStart()).reduce((s, l) => s + l.amount, 0);
 const toSavings = () => S.sav.reduce((s, f) => s + f.ops.filter(o => o.amount > 0 && o.cash !== false && new Date(o.date) >= cashStart()).reduce((a, o) => a + o.amount, 0), 0);
 
 function renderCash() {
-  const got = cashIn(), sav = toSavings(), fam = toFamily(), me = spentMe(), left = got - sav - fam - me;
+  const got = cashIn(), sav = toSavings(), fam = toFamily(), me = spentMe(), ln = lent(), rt = returned(), left = got + rt - sav - fam - me - ln;
   const salDate = cashStart().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
   const per = S.cashPer || 'salary';
   $('c-top').innerHTML = `<div class="seg" id="c-per" style="margin-bottom:8px">${[['salary', 'С зарплаты'], ['month', 'Месяц'], ['3m', '3 мес'], ['all', 'Всё']]
@@ -32,8 +36,14 @@ function renderCash() {
     <div class="row"><span>🏦 В накопления</span><span>${fmt(sav)}</span></div>
     <div class="row"><span>👨‍👩‍👧 Семье</span><span>${fmt(fam)}</span></div>
     <div class="row"><span>🧍 Потратил сам</span><span>${fmt(me)}</span></div>
+    <div class="row"><span>🤝 Дал в долг</span><span>${fmt(ln)}${rt ? ` <span class="m">(вернули ${fmt(rt)})</span>` : ''}</span></div>
     <div class="row"><b>На руках, не распределено</b><b style="color:${left < -0.005 ? 'var(--bad)' : 'var(--acc)'}">${fmt(left)}</b></div>
-    <div class="grid2"><button class="btn ghost" id="c-wd">＋ Снял кэш</button><button class="btn ghost" id="c-me">🧍 Потратил сам</button></div>`;
+    <div class="grid2"><button class="btn ghost" id="c-wd">＋ Снял кэш</button><button class="btn ghost" id="c-me">🧍 Потратил сам</button></div>
+    <button class="btn ghost" id="c-loan">🤝 Дал в долг</button>
+    ${S.loans.filter(l => !l.back).length ? '<h3 style="margin-top:12px">Мне должны</h3>' + S.loans.filter(l => !l.back).map(l =>
+      `<div class="row"><div>${esc(l.who)}<div class="m">${new Date(l.date).toLocaleDateString('ru-RU')}</div></div><b>${fmt(l.amount)}</b>
+       <button class="btn" style="width:auto;padding:6px 12px;margin:0" data-back="${l.id}">Вернули</button><button class="del" data-dloan="${l.id}">×</button></div>`).join('')
+      + `<div class="m">Всего должны: ${fmt(S.loans.filter(l => !l.back).reduce((s, l) => s + l.amount, 0))}</div>` : ''}`;
 
   // family members with what each got in this period
   $('f-list').innerHTML = S.family.map(m => {
@@ -68,6 +78,13 @@ $('c-top').onclick = e => {
     S.tx.push({ id: uid(), date: new Date().toISOString(), amount: v, source: 'Кэш', category: 'Наличные', merchant: 'Снятие наличных', kind: 'cash', origin: 'manual', income: false });
     save(); renderCash(); render();
   }
+  if (e.target.id === 'c-loan') {
+    const v = askSum('Сколько дали в долг?'); if (!v) return;
+    const who = (prompt('Кому?') || '').trim(); if (!who) return;
+    S.loans.push({ id: uid(), who, amount: v, date: new Date().toISOString(), back: null }); save(); renderCash(); return;
+  }
+  if (e.target.dataset.back) { const l = S.loans.find(x => x.id === e.target.dataset.back); if (confirm(`${l.who} вернул(а) ${fmt(l.amount)}?`)) { l.back = new Date().toISOString(); save(); renderCash(); } return; }
+  if (e.target.dataset.dloan) { if (confirm('Удалить запись о долге?')) { S.loans = S.loans.filter(x => x.id !== e.target.dataset.dloan); save(); renderCash(); } return; }
   if (e.target.id === 'c-me') {
     const v = askSum('Сколько потратили из кэша?'); if (!v) return;
     const cats = allCats().filter(c => !['Семья', 'Наличные', 'Зарплата', 'Кешбэк', 'Поступления', 'Погашение кредитки', 'Счёт по кредитке', 'Блокировка (pending)'].includes(c));

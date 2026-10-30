@@ -37,7 +37,7 @@ $('bk-load').onchange = async e => {
   if (!confirm(`В копии ${d.tx.length} операций, новых для телефона: ${add.length}. Добавить их, а также копилки, правила и категории?`)) return;
   S.tx.push(...add);
   const merge = (k, id) => (d[k] || []).forEach(x => { if (!(S[k] = S[k] || []).some(y => y[id] === x[id])) S[k].push(x); });
-  merge('sources', 'name'); merge('rules', 'key'); merge('cats', 'name'); merge('sav', 'id');
+  merge('sources', 'name'); merge('rules', 'key'); merge('cats', 'name'); merge('sav', 'id'); merge('loans', 'id'); merge('family', 'id');
   if (d.cur) S.cur = d.cur;
   save(); render(); renderSet(); if (window.renderSav) renderSav(); bkInfo();
   toast('Восстановлено операций: ' + add.length);
