@@ -41,6 +41,7 @@ function renderCash() {
     <div class="row"><span>🏦 В накопления</span><span>${fmt(sav)}</span></div>
     <div class="row"><span>👨‍👩‍👧 Семье</span><span>${fmt(fam)}</span></div>
     <div class="row"><span>🧍 Потратил сам</span><span>${fmt(me)}</span></div>
+    <div class="row"><b>💵 Кэш на руках<div class="m" style="font-weight:400">снято − накопления − семье − потратил${lent() ? ' − в долг кэшем' : ''}</div></b><b>${fmt(Math.max(0, got - sav - fam - me - lent() + returned()))}</b></div>
     <div class="row"><span>💳 Остаток на дебетовой карте<div class="m">${db.how}</div></span><span>${db.v == null ? '—' : fmt(db.v)} <button class="del" style="color:var(--acc);font-size:13px" id="c-bal">✎</button></span></div>
     <div class="row"><span>🤝 Дал в долг</span><span>${fmt(owed)}</span></div>
     <div class="row"><b>Не распределено</b><b style="color:var(--acc)">${db.v == null ? '—' : fmt(db.v + owed)}</b></div>
