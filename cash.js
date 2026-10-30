@@ -51,7 +51,10 @@ function renderCash() {
     <div class="row"><span>🧍 Потратил сам</span><span>${fmt(me)}</span></div>
     <div class="row"><span>💳 Остаток на дебетовой карте<div class="m">${db.how}</div></span><span>${db.v == null ? '—' : fmt(db.v)} <button class="del" style="color:var(--acc);font-size:13px" id="c-bal">✎</button></span></div>
     <div class="row"><span>🤝 Дал в долг</span><span>${fmt(owed)}</span></div>
-    <div class="row"><b>Не распределено</b><b style="color:var(--acc)">${db.v == null ? '—' : fmt(db.v + owed)}</b></div>
+    <details class="unalloc"><summary class="row" style="cursor:pointer;list-style:none"><b>Не распределено ▾</b><b style="color:var(--acc)">${db.v == null ? '—' : fmt(db.v + owed)}</b></summary>
+      <div class="row m"><span>💳 На дебетовой карте</span><span>${db.v == null ? '—' : fmt(db.v)}</span></div>
+      ${S.loans.filter(l => !l.back).map(l => `<div class="row m"><span>🤝 ${esc(l.who)} · ${new Date(l.date).toLocaleDateString('ru-RU')}</span><span>${fmt(l.amount)}</span></div>`).join('') || '<div class="row m"><span>🤝 Долгов нет</span><span>0</span></div>'}
+    </details>
     <div class="grid2"><button class="btn ghost" id="c-wd">＋ Снял кэш</button><button class="btn ghost" id="c-me">🧍 Потратил сам</button></div>`;
 
   // debts live with the savings: the money is still mine
