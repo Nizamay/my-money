@@ -254,7 +254,7 @@ function buckets(a, b) {
   }
   return out;
 }
-const COLORS = ['#2563eb', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#64748b'];
+const COLORS = ['#2563eb', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#64748b', '#0ea5e9', '#a855f7', '#14b8a6', '#eab308', '#f43f5e', '#6366f1', '#22c55e', '#d946ef', '#78716c', '#fb923c'];
 
 function render() {
   const exp = S.tx.filter(t => !t.income && !isXfer(t) && !isInfo(t));
@@ -301,20 +301,20 @@ function render() {
   const groups = {}; inP.filter(inBucket).forEach(t => groups[t[st.split]] = (groups[t[st.split]] || 0) + t.amount);
   let arr = Object.entries(groups).filter(x => x[1] > 0).sort((x, y) => y[1] - x[1]);
   st.rest = null;
-  if (arr.length > 9) { st.rest = arr.slice(9).map(x => x[0]); const rest = arr.slice(9).reduce((s, x) => s + x[1], 0); arr = arr.slice(0, 9).concat([['Прочее', rest]]); }
+  st.rest = null;   // every category gets its own slice, no «Прочее»
   const total = arr.reduce((s, x) => s + x[1], 0);
   let ang = -Math.PI / 2, d = '';
   arr.forEach(([k, v], i) => {
     const fr = v / total, a2 = ang + fr * Math.PI * 2, big = fr > .5 ? 1 : 0;
     const p = (r, t) => (100 + r * Math.cos(t)).toFixed(2) + ' ' + (100 + r * Math.sin(t)).toFixed(2);
     const op = st.fKey && st.fKey !== k ? .25 : 1;
-    d += fr >= .9999 ? `<circle data-k="${esc(k)}" cx="100" cy="100" r="70" fill="none" stroke="${COLORS[i]}" stroke-width="40" opacity="${op}"/>`
-      : `<path data-k="${esc(k)}" d="M${p(90, ang)} A90 90 0 ${big} 1 ${p(90, a2)} L${p(50, a2)} A50 50 0 ${big} 0 ${p(50, ang)}Z" fill="${COLORS[i]}" opacity="${op}"/>`;
+    d += fr >= .9999 ? `<circle data-k="${esc(k)}" cx="100" cy="100" r="70" fill="none" stroke="${COLORS[i % COLORS.length]}" stroke-width="40" opacity="${op}"/>`
+      : `<path data-k="${esc(k)}" d="M${p(90, ang)} A90 90 0 ${big} 1 ${p(90, a2)} L${p(50, a2)} A50 50 0 ${big} 0 ${p(50, ang)}Z" fill="${COLORS[i % COLORS.length]}" opacity="${op}"/>`;
     ang = a2;
   });
   d += `<text x="100" y="104" text-anchor="middle" style="font-size:15px;fill:var(--fg);font-weight:600">${total ? fmt(total) : 'нет данных'}</text>`;
   $('donut').innerHTML = d;
-  $('legend').innerHTML = arr.map(([k, v], i) => `<div data-k="${esc(k)}" style="opacity:${st.fKey && st.fKey !== k ? .4 : 1}"><i style="background:${COLORS[i]}"></i>${st.split === 'category' ? catIcon(k) + ' ' : ''}${esc(k)}<span class="mut">${Math.round(v / total * 100)}%</span><span class="v">${fmt(v)}</span></div>`).join('');
+  $('legend').innerHTML = arr.map(([k, v], i) => `<div data-k="${esc(k)}" style="opacity:${st.fKey && st.fKey !== k ? .4 : 1}"><i style="background:${COLORS[i % COLORS.length]}"></i>${st.split === 'category' ? catIcon(k) + ' ' : ''}${esc(k)}<span class="mut">${Math.round(v / total * 100)}%</span><span class="v">${fmt(v)}</span></div>`).join('');
 
   // list
   let f = '';
