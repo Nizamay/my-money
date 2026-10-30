@@ -4,12 +4,16 @@
 S.family = S.family || [];
 let openMember = null;
 
-// the cash period starts at the latest salary; without one, at the start of the month
+// the cash period: since the latest salary (default), this month, the last 3 months, or everything
+const salaryDate = () => S.tx.filter(t => t.income && t.category === 'Зарплата').map(t => new Date(t.date)).sort((a, b) => b - a)[0];
 function cashStart() {
-  const sal = S.tx.filter(t => t.income && t.category === 'Зарплата').map(t => new Date(t.date)).sort((a, b) => b - a)[0];
-  const n = new Date();
-  return sal || new Date(n.getFullYear(), n.getMonth(), 1);
+  const n = new Date(), per = S.cashPer || 'salary';
+  if (per === 'all') return new Date(0);
+  if (per === '3m') return new Date(n.getFullYear(), n.getMonth() - 2, 1);
+  if (per === 'month') return new Date(n.getFullYear(), n.getMonth(), 1);
+  return salaryDate() || new Date(n.getFullYear(), n.getMonth(), 1);
 }
+const cashPerLabel = () => ({ salary: salaryDate() ? 'с последней зарплаты' : 'с начала месяца (зарплаты ещё нет)', month: 'этот месяц', '3m': 'последние 3 месяца', all: 'всё время' })[S.cashPer || 'salary'];
 const sinceStart = t => new Date(t.date) >= cashStart();
 const cashIn = () => S.tx.filter(t => t.kind === 'cash' && sinceStart(t)).reduce((s, t) => s + t.amount, 0);
 const toFamily = () => S.tx.filter(t => t.origin === 'cash' && t.category === 'Семья' && sinceStart(t)).reduce((s, t) => s + t.amount, 0);
@@ -19,7 +23,11 @@ const toSavings = () => S.sav.reduce((s, f) => s + f.ops.filter(o => o.amount > 
 function renderCash() {
   const got = cashIn(), sav = toSavings(), fam = toFamily(), me = spentMe(), left = got - sav - fam - me;
   const salDate = cashStart().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
-  $('c-top').innerHTML = `<div class="mut">С ${salDate} (последняя зарплата)</div>
+  const per = S.cashPer || 'salary';
+  $('c-top').innerHTML = `<div class="seg" id="c-per" style="margin-bottom:8px">${[['salary', 'С зарплаты'], ['month', 'Месяц'], ['3m', '3 мес'], ['all', 'Всё']]
+      .map(([k, l]) => `<button data-per="${k}" class="${k === per ? 'on' : ''}">${l}</button>`).join('')}</div>
+    <div class="mut">${per === 'all' ? 'За всё время' : 'С ' + salDate} · ${cashPerLabel()}</div>
+    <div class="mut">Снятий за период: ${S.tx.filter(t => t.kind === 'cash' && sinceStart(t)).length}</div>
     <div class="row"><span>💵 Снято кэша</span><b>${fmt(got)}</b></div>
     <div class="row"><span>🏦 В накопления</span><span>${fmt(sav)}</span></div>
     <div class="row"><span>👨‍👩‍👧 Семье</span><span>${fmt(fam)}</span></div>
@@ -54,6 +62,7 @@ $('c-seg').onclick = e => {
   $('c-fam').style.display = b.dataset.c === 'fam' ? '' : 'none';
 };
 $('c-top').onclick = e => {
+  if (e.target.dataset.per) { S.cashPer = e.target.dataset.per; save(); renderCash(); return; }
   if (e.target.id === 'c-wd') {   // a withdrawal the bank sent no SMS about
     const v = askSum('Сколько сняли наличными?'); if (!v) return;
     S.tx.push({ id: uid(), date: new Date().toISOString(), amount: v, source: 'Кэш', category: 'Наличные', merchant: 'Снятие наличных', kind: 'cash', origin: 'manual', income: false });
