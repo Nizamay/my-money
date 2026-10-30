@@ -330,7 +330,7 @@ function render() {
     .sort(st.sort === 'sum' ? (x, y) => Math.abs(y.amount) - Math.abs(x.amount) : st.sort === 'old' ? (x, y) => x.date.localeCompare(y.date) : (x, y) => y.date.localeCompare(x.date)).slice(0, 300);
   $('list').innerHTML = list.length ? list.map(t => `<div class="row"><div><div>${catIcon(t.category)} ${esc(t.merchant || t.note || t.category)}</div>
     <div class="m">${new Date(t.date).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ${esc(t.source)}${t.merchant && t.note ? " · " + esc(t.note) : ""} ·
-    <select data-cat="${t.id}" style="width:auto;padding:2px;margin:0;font-size:12px">${catOptions(t.category)}</select></div></div>
+    <select data-cat="${t.id}" style="width:auto;padding:2px;margin:0;font-size:12px">${catOptions(t.category)}</select>${t.merchant ? `<label style="font-size:11px;white-space:nowrap"><input type="checkbox" data-own="${t.id}" ${t.own ? 'checked' : ''} style="width:auto;margin:0 2px 0 6px">только эта</label>` : ''}</div></div>
     <div class="amt ${t.income ? 'inc' : ''}">${t.income || t.amount < 0 ? '+' : '−'}${fmt(Math.abs(t.amount))}</div><button class="del" data-del="${t.id}">×</button></div>`).join('')
     : '<p class="mut">Пока пусто</p>';
 
@@ -414,13 +414,16 @@ $('legend').addEventListener('contextmenu', e => {   // right click / long press
 $('filters').onclick = e => { const c = e.target.dataset.clr; if (c === 'b') st.fBucket = null; if (c === 'k') st.fKey = null; render(); };
 $('list').onclick = e => { const id = e.target.dataset.del; if (id && confirm('Удалить операцию?')) { S.tx = S.tx.filter(t => t.id !== id); save(); render(); } };
 $('list').onchange = e => {
+  const oid = e.target.dataset.own;
+  if (oid) { const t = S.tx.find(x => x.id === oid); if (e.target.checked) t.own = true; else delete t.own; save(); return; }
   const id = e.target.dataset.cat; if (!id) return;
   let c = e.target.value; if (c === '__new') { c = newCat(); if (!c) return render(); }
   const t = S.tx.find(x => x.id === id); t.category = c;
   if (c === PAYOFF_CAT) { t.income = false; t.payTo = cardFor(t) || askCard(); }
-  if (t.merchant && confirm(`Всегда относить «${t.merchant}» к «${c}»?`)) {
+  // «только эта» ticked: this purchase alone; otherwise the shop's purchases (except other «только эта» ones) and future ones follow
+  if (t.merchant && !t.own) {
     S.rules.unshift({ key: t.merchant, cat: c });
-    S.tx.forEach(x => { if (x.merchant === t.merchant) x.category = c; });
+    S.tx.forEach(x => { if (x.merchant === t.merchant && !x.own) x.category = c; });
   }
   save(); render();
 };
