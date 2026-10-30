@@ -143,11 +143,14 @@ function parseSms(text, from = '') {
   const cands = [...dated.matchAll(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[ T]+(\d{1,2}):(\d{2}))?/g)].map(m => [+m[1], +m[2], +m[3], m[4], m[5]])
     .concat([...dated.matchAll(/(?<![\d.,])(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?(?![\d,])(?:\s+(\d{1,2}):(\d{2}))?/g)].filter(m => m[3] || m[4]).flatMap(m => [[m[3] ? +m[3] : date.getFullYear(), +m[2], +m[1], m[4], m[5]]]
       .concat(m[3] && m[3].length === 2 ? [[+m[1], +m[2], +m[3], m[4], m[5]]] : [])));
+  // "26-10-25" reads as 26 Oct 2025 or 25 Oct 2026: of the readings that are not in the future, the most recent wins
+  let best = null;
   for (let [y, mo, dd, hh, mi] of cands) {
     if (y < 100) y += 2000;
     const d = new Date(y, mo - 1, dd, hh ? +hh : 12, mi ? +mi : 0);
-    if (mo >= 1 && mo <= 12 && dd >= 1 && dd <= 31 && d <= new Date(Date.now() + 864e5) && d > new Date(Date.now() - 400 * 864e5)) { date = d; break; }
+    if (mo >= 1 && mo <= 12 && dd >= 1 && dd <= 31 && d <= new Date(Date.now() + 864e5) && d > new Date(Date.now() - 400 * 864e5) && (!best || d > best)) best = d;
   }
+  if (best) date = best;
 
   // merchant: taken from the SMS's own labels (At:, From:, Sender:, Provider: …), on one line or many;
   // a value that is only digits / masked numbers / card brands never names a shop

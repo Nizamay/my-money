@@ -4,7 +4,7 @@ const monthStart = (y, m) => new Date(y, m, 1);
 
 /* ---------- re-read saved SMS with the current parser: operations saved by an older version get
    the right time, amount, shop and kind; a category the user chose is kept ---------- */
-const PARSER_VER = 29;
+const PARSER_VER = 31;
 function reparseAll() {
   let n = 0;
   S.tx.forEach(t => {
