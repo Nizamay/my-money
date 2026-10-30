@@ -16,7 +16,11 @@ function cashStart() {
 const cashPerLabel = () => ({ salary: salaryDate() ? 'с последней зарплаты' : 'с начала месяца (зарплаты ещё нет)', month: 'этот месяц', '3m': 'последние 3 месяца', all: 'всё время' })[S.cashPer || 'salary'];
 const sinceStart = t => new Date(t.date) >= cashStart();
 const cashIn = () => S.tx.filter(t => t.kind === 'cash' && sinceStart(t)).reduce((s, t) => s + t.amount, 0);
-const toFamily = () => S.tx.filter(t => t.origin === 'cash' && t.category === 'Семья' && sinceStart(t)).reduce((s, t) => s + t.amount, 0);
+const famDay = t => new Date(t.given || t.date);
+const famIn = t => famDay(t) >= cashStart();
+const monthLabel = ym => { const [y, m] = ym.split('-').map(Number); return new Date(y, m - 1, 1).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }); };
+const forMonth = t => t.forMonth || t.date.slice(0, 7);
+const toFamily = () => S.tx.filter(t => t.origin === 'cash' && t.category === 'Семья' && famIn(t)).reduce((s, t) => s + t.amount, 0);
 const spentMe = () => S.tx.filter(t => t.origin === 'cash' && t.category !== 'Семья' && sinceStart(t)).reduce((s, t) => s + t.amount, 0);
 // money lent from cash: not spending — it is expected back; a returned loan is cash in hand again
 S.loans = S.loans || [];
@@ -53,14 +57,14 @@ function renderCash() {
 
   // family members with what each got in this period
   $('f-list').innerHTML = S.family.map(m => {
-    const got = S.tx.filter(t => t.origin === 'cash' && t.category === 'Семья' && t.merchant === m.name && sinceStart(t)).reduce((s, t) => s + t.amount, 0);
+    const got = S.tx.filter(t => t.origin === 'cash' && t.category === 'Семья' && t.merchant === m.name && famIn(t)).reduce((s, t) => s + t.amount, 0);
     return `<div class="row"><span data-m="${m.id}" style="cursor:pointer">${esc(m.name)}<div class="m">с зарплаты: ${fmt(got)}</div></span>
       <button class="btn" style="width:auto;padding:6px 14px;margin:0" data-give="${m.id}">Дать</button></div>`;
   }).join('') || '<p class="mut">Добавьте членов семьи</p>';
   const m = S.family.find(x => x.id === openMember);
   $('f-hist').style.display = m ? '' : 'none';
   if (m) $('f-hist').innerHTML = `<h3>${esc(m.name)} — история</h3>` + (S.tx.filter(t => t.origin === 'cash' && t.category === 'Семья' && t.merchant === m.name)
-    .sort((a, b) => b.date.localeCompare(a.date)).map(t => `<div class="row"><div>${esc(t.note || 'кэш')}<div class="m">${new Date(t.date).toLocaleDateString('ru-RU')}</div></div>
+    .sort((a, b) => forMonth(b).localeCompare(forMonth(a)) || b.date.localeCompare(a.date)).map(t => `<div class="row"><div>на ${monthLabel(forMonth(t))}<div class="m">${esc(t.note || 'кэш')}${t.given ? ' · дал ' + new Date(t.given).toLocaleDateString('ru-RU') : ''}</div></div>
       <b>${fmt(t.amount)}</b><button class="del" style="color:var(--acc)" data-etx="${t.id}">✎</button><button class="del" data-dtx="${t.id}">×</button></div>`).join('') || '<p class="mut">Пока ничего</p>')
     + `<button class="btn ghost" style="color:var(--bad);border-color:var(--bad)" data-delm="${m.id}">Удалить из списка</button>`;
 }
@@ -122,6 +126,37 @@ function debitBalance() {
   return { v: Math.round(v * 100) / 100, how };
 }
 
+// «Дать» / ✎: amount, for which month (no day), comment
+function famSheet(m, t) {
+  const n = new Date(), months = [];
+  for (let i = 2; i >= -12; i--) { const d = new Date(n.getFullYear(), n.getMonth() + i, 1); months.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')); }
+  // after the salary the money is for the coming month
+  const sal = salaryDate(), def = t ? forMonth(t) : (sal && sal.getDate() >= 20 && (n - sal) < 20 * 864e5 ? months[1] : months[2]);
+  if (t && !months.includes(def)) months.push(def);
+  const box = document.createElement('div');
+  box.style.cssText = 'position:fixed;inset:0;background:#0007;z-index:20;display:flex;align-items:flex-end';
+  box.innerHTML = `<div class="card" style="width:100%;margin:0;border-radius:16px 16px 0 0;padding-bottom:calc(16px + env(safe-area-inset-bottom))">
+    <h3>${t ? '✎ Изменить' : 'Дать'}: ${esc(m.name)}</h3>
+    <input id="g-v" type="number" inputmode="decimal" placeholder="Сумма, SAR" value="${t ? t.amount : ''}">
+    <label class="mut">На какой месяц</label>
+    <select id="g-m">${months.map(x => `<option value="${x}"${x === def ? ' selected' : ''}>на ${monthLabel(x)}</option>`).join('')}</select>
+    <input id="g-n" placeholder="На что (необязательно)" value="${t ? esc(t.note || '') : ''}">
+    <button class="btn" id="g-ok">${t ? 'Сохранить' : 'Записать'}</button><button class="btn ghost" id="g-x">Отмена</button></div>`;
+  document.body.appendChild(box);
+  const q = s => box.querySelector(s);
+  q('#g-x').onclick = () => box.remove();
+  box.onclick = e => { if (e.target === box) box.remove(); };
+  q('#g-ok').onclick = () => {
+    const v = parseFloat(String(q('#g-v').value).replace(',', '.')); if (!(v > 0)) return q('#g-v').focus();
+    const ym = q('#g-m').value, [y, mo] = ym.split('-').map(Number), date = new Date(y, mo - 1, 1, 12).toISOString();
+    if (t) Object.assign(t, { amount: v, forMonth: ym, date, note: q('#g-n').value.trim() });
+    // money entered for a past month is history: it does not touch the current cash period
+    const curYM = new Date().toISOString().slice(0, 7);
+    if (!t) S.tx.push({ id: uid(), date, forMonth: ym, given: ym < curYM ? undefined : new Date().toISOString(), amount: v, source: 'Кэш', category: 'Семья', merchant: m.name, note: q('#g-n').value.trim(), origin: 'cash', income: false });
+    box.remove(); save(); renderCash(); render();
+  };
+}
+
 const askSum = q => { const v = parseFloat(String(prompt(q) || '').replace(',', '.').replace(/\s/g, '')); return v > 0 ? v : 0; };
 const cashTx = (amount, category, merchant, note) => {
   S.tx.push({ id: uid(), date: new Date().toISOString(), amount, source: 'Кэш', category, merchant, note, origin: 'cash', income: false });
@@ -174,17 +209,9 @@ $('f-add').onclick = () => {
 };
 $('c-fam').onclick = e => {
   const ds = e.target.dataset;
-  if (ds.give) { const m = S.family.find(x => x.id === ds.give); const v = askSum(`Сколько дали: ${m.name}?`); if (v) cashTx(v, 'Семья', m.name, prompt('На что? (необязательно)') || ''); }
+  if (ds.give) famSheet(S.family.find(x => x.id === ds.give));
   else if (ds.m || e.target.closest('[data-m]')) { const id = ds.m || e.target.closest('[data-m]').dataset.m; openMember = openMember === id ? null : id; renderCash(); }
-  else if (ds.etx) {
-    const t = S.tx.find(x => x.id === ds.etx); if (!t) return;
-    const v = parseFloat(String(prompt('Сумма', t.amount) || '').replace(',', '.')); if (!(v > 0)) return;
-    const note = prompt('На что', t.note || ''); if (note === null) return;
-    const dt = prompt('Дата (ДД.ММ.ГГГГ)', new Date(t.date).toLocaleDateString('ru-RU')); if (dt === null) return;
-    const m = dt.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
-    t.amount = v; t.note = note.trim(); if (m) t.date = new Date(+m[3], m[2] - 1, +m[1], 12).toISOString();
-    save(); renderCash(); render();
-  }
+  else if (ds.etx) { const t = S.tx.find(x => x.id === ds.etx); if (t) famSheet(S.family.find(x => x.name === t.merchant) || { name: t.merchant }, t); }
   else if (ds.dtx) { if (confirm('Удалить запись?')) { S.tx = S.tx.filter(t => t.id !== ds.dtx); save(); renderCash(); render(); } }
   else if (ds.delm) { if (confirm('Убрать из списка? История останется в операциях.')) { S.family = S.family.filter(x => x.id !== ds.delm); openMember = null; save(); renderCash(); } }
 };
