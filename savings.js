@@ -1,7 +1,11 @@
 'use strict';
 /* ---------- savings: funds (копилки), each topped up / withdrawn by hand ---------- */
 S.sav = S.sav || [];
-const bal = f => f.ops.reduce((s, o) => s + o.amount, 0);   // kept in SAR; each op also remembers what was typed
+// a fund named «Юани» (CNY / yuan) holds yuan: it keeps the count of yuan and is valued at today's rate;
+// every other fund is kept in SAR (each op also remembers what was typed)
+const unitOf = f => f.unit || (/юан|cny|yuan/i.test(f.name) ? 'CNY' : '');
+const units = f => f.ops.reduce((s, o) => s + (o.orig != null ? o.orig : o.amount), 0);
+const bal = f => unitOf(f) === 'CNY' ? units(f) * cnySar() : f.ops.reduce((s, o) => s + o.amount, 0);
 let openFund = null;
 
 // SAR per unit; USD is pegged. RUB: a USD→RUB rate the user typed (e.g. from Google) wins;
@@ -10,13 +14,16 @@ S.rates = S.rates || { USD: 3.75, RUB: 0.047, t: 0 };
 const applyManual = () => { if (S.rates.manualUsdRub) S.rates.RUB = S.rates.USD / S.rates.manualUsdRub; };
 applyManual();
 const SAV_CUR = ['SAR', 'USD', 'RUB'];
-const toSar = (v, c) => c === 'SAR' ? v : v * S.rates[c];
+// CNY→RUB: typed by the user, else the Moscow Exchange CNYRUB_TOM price (what T-Investments trades at), else the market rate
+const cnyRub = () => S.rates.manualCnyRub || S.rates.cnyRub || 11;
+const cnySar = () => cnyRub() * S.rates.RUB;
+const toSar = (v, c) => c === 'SAR' ? v : c === 'CNY' ? v * cnySar() : v * S.rates[c];
 const fromSar = (v, c) => c === 'SAR' ? v : v / S.rates[c];
 const n2 = v => S.hide ? HIDE : (Math.round(v * 100) / 100).toLocaleString('ru-RU', { maximumFractionDigits: v >= 1000 ? 0 : 2 });
 const tri = v => SAV_CUR.map(c => n2(fromSar(v, c)) + ' ' + c).join(' · ');
 function refreshRates() {
   if (S.rates.manualUsdRub) return;
-  const set = (usdRub, src) => { if (!(usdRub > 1)) return false; S.rates = { USD: 3.75, RUB: 3.75 / usdRub, t: Date.now(), src }; save(); renderSav(); return true; };
+  const set = (usdRub, src) => { if (!(usdRub > 1)) return false; Object.assign(S.rates, { USD: 3.75, RUB: 3.75 / usdRub, t: Date.now(), src }); save(); renderSav(); return true; };   // assign keeps the yuan rate
   fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json').then(r => r.json())
     .then(j => set(j && j.usd && j.usd.rub, 'рыночный'))
     .catch(() => false)
@@ -24,6 +31,15 @@ function refreshRates() {
     .catch(() => {});
 }
 if (Date.now() - S.rates.t > 6 * 36e5) refreshRates();
+function refreshCny() {
+  const set = v => { if (v > 1) { S.rates.cnyRub = v; S.rates.cnyT = Date.now(); save(); renderSav(); return true; } return false; };
+  fetch('https://iss.moex.com/iss/engines/currency/markets/selt/boards/CETS/securities/CNYRUB_TOM.json?iss.meta=off&iss.only=marketdata&marketdata.columns=LAST,WAPRICE')
+    .then(r => r.json()).then(j => { const row = j.marketdata.data[0] || []; return set(row[0] || row[1]); })
+    .catch(() => false)
+    .then(ok => ok || fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/cny.json').then(r => r.json()).then(j => set(j && j.cny && j.cny.rub)))
+    .catch(() => {});
+}
+if (S.sav.some(f => unitOf(f) === 'CNY') && Date.now() - (S.rates.cnyT || 0) > 36e5) refreshCny();
 
 function renderSav() {
   const funds = S.sav, total = funds.reduce((s, f) => s + bal(f), 0);
@@ -50,7 +66,8 @@ function renderSav() {
   $('v-list').innerHTML = funds.length ? funds.map(f => {
     const b = bal(f), pct = f.goal ? Math.min(100, Math.round(b / f.goal * 100)) : null;
     return `<div class="row"><div style="flex:1"><div data-f="${f.id}" style="cursor:pointer">${esc(f.name)}</div>
-      <div class="m">${tri(b)}${f.goal ? ` · цель ${fmt(f.goal)} · ${pct}%` : ''}</div>
+      <div class="m">${unitOf(f) === 'CNY' ? `<b>${n2(units(f))} CNY</b> = ` : ''}${tri(b)}${f.goal ? ` · цель ${fmt(f.goal)} · ${pct}%` : ''}</div>
+      ${unitOf(f) === 'CNY' ? `<div class="m">1 CNY = ${n2(cnyRub())} RUB ${S.rates.manualCnyRub ? '(ваш курс)' : S.rates.cnyT ? '(Мосбиржа, ' + new Date(S.rates.cnyT).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) + ')' : '(примерно)'} <button class="del" style="color:var(--acc);font-size:13px" data-cnyrate="1">изменить</button></div>` : ''}
       ${f.goal ? `<div style="height:5px;background:var(--line);border-radius:3px;margin-top:4px"><div style="width:${pct}%;height:5px;background:var(--acc);border-radius:3px"></div></div>` : ''}</div>
       <button class="del" style="color:#16a34a" data-plus="${f.id}">＋</button><button class="del" data-minus="${f.id}">－</button></div>`;
   }).join('') : '<p class="mut">Создайте первую копилку ниже</p>';
@@ -59,7 +76,7 @@ function renderSav() {
   $('v-hist').style.display = f ? '' : 'none';
   if (f) $('v-hist').innerHTML = `<h3>${esc(f.name)} — история</h3>` +
     (f.ops.slice().reverse().map(o => `<div class="row"><div>${esc(o.note || (o.amount > 0 ? 'Пополнение' : 'Снятие'))}<div class="m">${new Date(o.date).toLocaleDateString('ru-RU')}</div></div>
-      <b class="${o.amount > 0 ? 'inc' : ''}">${o.amount > 0 ? '+' : '−'}${o.cur && o.cur !== 'SAR' ? n2(Math.abs(o.orig)) + ' ' + o.cur + ' <span class="m">(' + fmt(Math.abs(o.amount)) + ')</span>' : fmt(Math.abs(o.amount))}</b><button class="del" data-dop="${o.id}">×</button></div>`).join('') || '<p class="mut">Операций нет</p>') +
+      <b class="${o.amount > 0 ? 'inc' : ''}">${o.amount > 0 ? '+' : '−'}${o.cur === 'CNY' ? n2(Math.abs(o.orig)) + ' CNY' : o.cur && o.cur !== 'SAR' ? n2(Math.abs(o.orig)) + ' ' + o.cur + ' <span class="m">(' + fmt(Math.abs(o.amount)) + ')</span>' : fmt(Math.abs(o.amount))}</b><button class="del" data-dop="${o.id}">×</button></div>`).join('') || '<p class="mut">Операций нет</p>') +
     `<div class="grid2"><button class="btn ghost" data-ren="${f.id}">Переименовать / цель</button><button class="btn ghost" style="color:var(--bad);border-color:var(--bad)" data-delf="${f.id}">Удалить копилку</button></div>`;
 }
 
@@ -82,9 +99,9 @@ function move(id, sign) {
   box.style.cssText = 'position:fixed;inset:0;background:#0007;z-index:20;display:flex;align-items:flex-end';
   box.innerHTML = `<div class="card" style="width:100%;margin:0;border-radius:16px 16px 0 0;padding-bottom:calc(16px + env(safe-area-inset-bottom))">
     <h3>${sign > 0 ? 'Пополнить' : 'Снять из'} «${esc(f.name)}»</h3>
-    <div style="display:flex;gap:8px"><input id="m-v" type="number" inputmode="decimal" placeholder="Сумма" style="flex:1">${curSel('m-c')}</div>
+    <div style="display:flex;gap:8px"><input id="m-v" type="number" inputmode="decimal" placeholder="${unitOf(f) === 'CNY' ? 'Сколько юаней' : 'Сумма'}" style="flex:1">${unitOf(f) === 'CNY' ? '<select id="m-c" style="width:auto"><option>CNY</option></select>' : curSel('m-c')}</div>
     <input id="m-n" placeholder="Комментарий (необязательно)">
-    ${sign > 0 ? '<label class="mut" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="m-cash" checked style="width:auto;margin:0"> из снятого кэша (уменьшит «на руках»)</label>' : ''}
+    ${sign > 0 ? `<label class="mut" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="m-cash" ${unitOf(f) === 'CNY' ? '' : 'checked'} style="width:auto;margin:0"> из снятого кэша</label>` : ''}
     <div class="m" id="m-eq"></div>
     <button class="btn" id="m-ok">${sign > 0 ? 'Пополнить' : 'Снять'}</button><button class="btn ghost" id="m-x">Отмена</button></div>`;
   document.body.appendChild(box);
@@ -105,9 +122,17 @@ $('v-add').onclick = () => {
   const name = $('v-name').value.trim(); if (!name) return alert('Название копилки');
   const goal = Math.round(toSar(parseFloat($('v-goal').value) || 0, $('v-gcur').value) * 100) / 100;   // the goal is kept in SAR
   S.sav.push({ id: uid(), name, goal, ops: [] }); save();
+  if (/юан|cny|yuan/i.test(name)) refreshCny();
   $('v-name').value = $('v-goal').value = ''; $('v-gcur').value = 'SAR'; renderSav();
 };
 document.getElementById('t-sav').onclick = e => {
+  if (e.target.dataset.cnyrate) {
+    const a = prompt('1 CNY = … RUB (курс из Т-Инвестиций). Пусто — курс Мосбиржи', S.rates.manualCnyRub || n2(cnyRub()).replace(/\s/g, ''));
+    if (a === null) return;
+    const v = parseFloat(a.replace(',', '.').replace(/[^\d.]/g, ''));
+    if (v > 0) S.rates.manualCnyRub = v; else { delete S.rates.manualCnyRub; refreshCny(); }
+    save(); renderSav(); return;
+  }
   const t = e.target.closest('[data-plus],[data-minus],[data-f],[data-dop],[data-ren],[data-delf]'); if (!t) return;
   const ds = t.dataset;
   if (ds.plus) move(ds.plus, 1);
