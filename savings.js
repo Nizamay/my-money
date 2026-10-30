@@ -1,12 +1,24 @@
 'use strict';
 /* ---------- savings: funds (копилки), each topped up / withdrawn by hand ---------- */
 S.sav = S.sav || [];
-const bal = f => f.ops.reduce((s, o) => s + o.amount, 0);
+const bal = f => f.ops.reduce((s, o) => s + o.amount, 0);   // kept in SAR; each op also remembers what was typed
 let openFund = null;
+
+// SAR per unit; USD is pegged, RUB refreshed once a day when online (falls back to the last known rate)
+S.rates = S.rates || { USD: 3.75, RUB: 0.047, t: 0 };
+const SAV_CUR = ['SAR', 'USD', 'RUB'];
+const toSar = (v, c) => c === 'SAR' ? v : v * S.rates[c];
+const fromSar = (v, c) => c === 'SAR' ? v : v / S.rates[c];
+const n2 = v => (Math.round(v * 100) / 100).toLocaleString('ru-RU', { maximumFractionDigits: v >= 1000 ? 0 : 2 });
+const tri = v => SAV_CUR.map(c => n2(fromSar(v, c)) + ' ' + c).join(' · ');
+if (Date.now() - S.rates.t > 864e5) fetch('https://open.er-api.com/v6/latest/SAR').then(r => r.json()).then(j => {
+  if (j && j.rates && j.rates.USD && j.rates.RUB) { S.rates = { USD: 1 / j.rates.USD, RUB: 1 / j.rates.RUB, t: Date.now() }; save(); renderSav(); }
+}).catch(() => {});
 
 function renderSav() {
   const funds = S.sav, total = funds.reduce((s, f) => s + bal(f), 0);
-  $('v-total').textContent = fmt(total);
+  $('v-total').innerHTML = SAV_CUR.map(c => `<div>${n2(fromSar(total, c))} ${c}</div>`).join('')
+    + `<small class="mut" style="font-weight:400">1 USD = ${n2(S.rates.USD)} SAR · 1 SAR = ${n2(1 / S.rates.RUB)} RUB${S.rates.t ? ' · курс от ' + new Date(S.rates.t).toLocaleDateString('ru-RU') : ' · примерный курс'}</small>`;
 
   // share of each fund
   const arr = funds.map((f, i) => [f, bal(f), COLORS[i % COLORS.length]]).filter(x => x[1] > 0);
@@ -21,12 +33,12 @@ function renderSav() {
   });
   d += `<text x="100" y="104" text-anchor="middle" style="font-size:15px;fill:var(--fg);font-weight:600">${sum ? fmt(sum) : 'пусто'}</text>`;
   $('v-donut').innerHTML = d;
-  $('v-legend').innerHTML = arr.map(([f, v, c]) => `<div data-f="${f.id}"><i style="background:${c}"></i>${esc(f.name)}<span class="mut">${Math.round(v / sum * 100)}%</span><span class="v">${fmt(v)}</span></div>`).join('');
+  $('v-legend').innerHTML = arr.map(([f, v, c]) => `<div data-f="${f.id}"><i style="background:${c}"></i>${esc(f.name)}<span class="mut">${Math.round(v / sum * 100)}%</span><span class="v">${tri(v)}</span></div>`).join('');
 
   $('v-list').innerHTML = funds.length ? funds.map(f => {
     const b = bal(f), pct = f.goal ? Math.min(100, Math.round(b / f.goal * 100)) : null;
     return `<div class="row"><div style="flex:1"><div data-f="${f.id}" style="cursor:pointer">${esc(f.name)}</div>
-      <div class="m">${fmt(b)}${f.goal ? ` из ${fmt(f.goal)} · ${pct}%` : ''}</div>
+      <div class="m">${tri(b)}${f.goal ? ` · цель ${fmt(f.goal)} · ${pct}%` : ''}</div>
       ${f.goal ? `<div style="height:5px;background:var(--line);border-radius:3px;margin-top:4px"><div style="width:${pct}%;height:5px;background:var(--acc);border-radius:3px"></div></div>` : ''}</div>
       <button class="del" style="color:#16a34a" data-plus="${f.id}">＋</button><button class="del" data-minus="${f.id}">－</button></div>`;
   }).join('') : '<p class="mut">Создайте первую копилку ниже</p>';
@@ -35,17 +47,19 @@ function renderSav() {
   $('v-hist').style.display = f ? '' : 'none';
   if (f) $('v-hist').innerHTML = `<h3>${esc(f.name)} — история</h3>` +
     (f.ops.slice().reverse().map(o => `<div class="row"><div>${esc(o.note || (o.amount > 0 ? 'Пополнение' : 'Снятие'))}<div class="m">${new Date(o.date).toLocaleDateString('ru-RU')}</div></div>
-      <b class="${o.amount > 0 ? 'inc' : ''}">${o.amount > 0 ? '+' : '−'}${fmt(Math.abs(o.amount))}</b><button class="del" data-dop="${o.id}">×</button></div>`).join('') || '<p class="mut">Операций нет</p>') +
+      <b class="${o.amount > 0 ? 'inc' : ''}">${o.amount > 0 ? '+' : '−'}${o.cur && o.cur !== 'SAR' ? n2(Math.abs(o.orig)) + ' ' + o.cur + ' <span class="m">(' + fmt(Math.abs(o.amount)) + ')</span>' : fmt(Math.abs(o.amount))}</b><button class="del" data-dop="${o.id}">×</button></div>`).join('') || '<p class="mut">Операций нет</p>') +
     `<div class="grid2"><button class="btn ghost" data-ren="${f.id}">Переименовать / цель</button><button class="btn ghost" style="color:var(--bad);border-color:var(--bad)" data-delf="${f.id}">Удалить копилку</button></div>`;
 }
 
 function move(id, sign) {
   const f = S.sav.find(x => x.id === id); if (!f) return;
-  const v = parseFloat(String(prompt(`${sign > 0 ? 'Пополнить' : 'Снять из'} «${f.name}», сумма:`) || '').replace(',', '.').replace(/\s/g, ''));
+  const raw = String(prompt(`${sign > 0 ? 'Пополнить' : 'Снять из'} «${f.name}». Сумма и валюта, например: 500, 100 USD, 20000 RUB`) || '');
+  const v = parseFloat(raw.replace(',', '.').replace(/[^\d.]/g, ''));
   if (!(v > 0)) return;
+  const cur = /usd|\$|дол/i.test(raw) ? 'USD' : /rub|руб|₽/i.test(raw) ? 'RUB' : 'SAR';
   const note = prompt('Комментарий (необязательно)') || '';
-  f.ops.push({ id: uid(), date: new Date().toISOString(), amount: sign * v, note });
-  save(); renderSav();
+  f.ops.push({ id: uid(), date: new Date().toISOString(), amount: sign * Math.round(toSar(v, cur) * 100) / 100, orig: sign * v, cur, note });
+  save(); renderSav(); if (window.renderCash) renderCash();
 }
 
 $('v-add').onclick = () => {

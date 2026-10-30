@@ -5,7 +5,7 @@ S.family = S.family || [];
 let openMember = null;
 
 // the cash period: since the latest salary (default), this month, the last 3 months, or everything
-const salaryDate = () => S.tx.filter(t => t.income && t.category === 'Зарплата').map(t => new Date(t.date)).sort((a, b) => b - a)[0];
+const salaryDate = () => S.tx.filter(t => t.income && (t.raw ? /salary|راتب|зарплат/i.test(t.raw) : t.category === 'Зарплата')).map(t => new Date(t.date)).sort((a, b) => b - a)[0];
 function cashStart() {
   const n = new Date(), per = S.cashPer || 'salary';
   if (per === 'all') return new Date(0);
