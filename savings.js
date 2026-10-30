@@ -5,7 +5,37 @@ S.sav = S.sav || [];
 // every other fund is kept in SAR (each op also remembers what was typed)
 const unitOf = f => f.unit || (/юан|cny|yuan/i.test(f.name) ? 'CNY' : '');
 const units = f => f.ops.reduce((s, o) => s + (o.orig != null ? o.orig : o.amount), 0);
-const bal = f => unitOf(f) === 'CNY' ? units(f) * cnySar() : f.ops.reduce((s, o) => s + o.amount, 0);
+// a fund of exchange-traded securities (f.unit 'SEC', f.ticker): keeps the number of lots, valued at the Moscow Exchange price in RUB
+S.prices = S.prices || {};
+const secRub = f => units(f) * (f.lot || 1) * ((S.prices[f.ticker] || {}).p || 0);
+const bal = f => unitOf(f) === 'CNY' ? units(f) * cnySar() : unitOf(f) === 'SEC' ? secRub(f) * S.rates.RUB : f.ops.reduce((s, o) => s + o.amount, 0);
+function refreshPrices() {
+  S.sav.filter(f => unitOf(f) === 'SEC' && f.ticker).forEach(f => {
+    fetch(`https://iss.moex.com/iss/engines/stock/markets/shares/boards/${f.board || 'TQBR'}/securities/${f.ticker}.json?iss.meta=off&iss.only=marketdata,securities&marketdata.columns=LAST,LCURRENTPRICE,MARKETPRICE&securities.columns=PREVPRICE,LOTSIZE`)
+      .then(r => r.json()).then(j => {
+        const m = j.marketdata.data[0] || [], sc = j.securities.data[0] || [];
+        const p = m[0] || m[1] || m[2] || sc[0];
+        if (p > 0) { S.prices[f.ticker] = { p, t: Date.now() }; if (sc[1]) f.lot = sc[1]; save(); renderSav(); }
+      }).catch(() => {});
+  });
+}
+// name → ticker: «Первая - фонд Халяльные инвестиции» → SBHI (search the exchange, skip the iNAV quote)
+async function findTicker(q) {
+  if (/^[A-Z0-9]{3,6}$/.test(q.trim())) return { ticker: q.trim(), board: 'TQBR', name: q.trim() };
+  // search each distinctive word, then pick the security whose name shares the most words with what was typed
+  const words = q.toLowerCase().replace(/[«»"'().,-]/g, ' ').split(/\s+/).filter(w => w.length > 3 && !/^(фонд|первая|бпиф|паев|инвест)$/.test(w));
+  const found = new Map();
+  for (const w of words.length ? words : [q]) {
+    try {
+      const j = await (await fetch('https://iss.moex.com/iss/securities.json?iss.meta=off&securities.columns=secid,name,primary_boardid&q=' + encodeURIComponent(w))).json();
+      j.securities.data.filter(x => x[2] && x[2] !== 'INAV' && /^[A-Z0-9]{3,6}$/.test(x[0])).forEach(x => found.set(x[0], x));
+    } catch (e) {}
+  }
+  const score = x => words.filter(w => x[1].toLowerCase().includes(w.slice(0, 6))).length + (/ПИФ|ETF/i.test(x[1]) ? 0.5 : 0);
+  const best = [...found.values()].sort((a, b) => score(b) - score(a))[0];
+  return best ? { ticker: best[0], board: best[2], name: best[1] } : null;
+}
+
 let openFund = null;
 
 // SAR per unit; USD is pegged. RUB: a USD→RUB rate the user typed (e.g. from Google) wins;
@@ -40,6 +70,7 @@ function refreshCny() {
     .catch(() => {});
 }
 if (S.sav.some(f => unitOf(f) === 'CNY') && Date.now() - (S.rates.cnyT || 0) > 36e5) refreshCny();
+if (S.sav.some(f => unitOf(f) === 'SEC')) refreshPrices();
 
 function renderSav() {
   const funds = S.sav, total = funds.reduce((s, f) => s + bal(f), 0);
@@ -67,6 +98,7 @@ function renderSav() {
     const b = bal(f), pct = f.goal ? Math.min(100, Math.round(b / f.goal * 100)) : null;
     return `<div class="row"><div style="flex:1"><div data-f="${f.id}" style="cursor:pointer">${esc(f.name)}</div>
       <div class="m">${unitOf(f) === 'CNY' ? `<b>${n2(units(f))} CNY</b> = ` : ''}${tri(b)}${f.goal ? ` · цель ${fmt(f.goal)} · ${pct}%` : ''}</div>
+      ${unitOf(f) === 'SEC' ? `<div class="m"><b>${n2(units(f))} лот.</b> ${f.ticker} · пай ${S.prices[f.ticker] ? n2(S.prices[f.ticker].p) + ' RUB (Мосбиржа, ' + new Date(S.prices[f.ticker].t).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) + ')' : '— цена ещё не загружена'}</div>` : ''}
       ${unitOf(f) === 'CNY' ? `<div class="m">1 CNY = ${n2(cnyRub())} RUB ${S.rates.manualCnyRub ? '(ваш курс)' : S.rates.cnyT ? '(Мосбиржа, ' + new Date(S.rates.cnyT).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) + ')' : '(примерно)'} <button class="del" style="color:var(--acc);font-size:13px" data-cnyrate="1">изменить</button></div>` : ''}
       ${f.goal ? `<div style="height:5px;background:var(--line);border-radius:3px;margin-top:4px"><div style="width:${pct}%;height:5px;background:var(--acc);border-radius:3px"></div></div>` : ''}</div>
       <button class="del" style="color:#16a34a" data-plus="${f.id}">＋</button><button class="del" data-minus="${f.id}">－</button></div>`;
@@ -76,7 +108,7 @@ function renderSav() {
   $('v-hist').style.display = f ? '' : 'none';
   if (f) $('v-hist').innerHTML = `<h3>${esc(f.name)} — история</h3>` +
     (f.ops.slice().reverse().map(o => `<div class="row"><div>${esc(o.note || (o.amount > 0 ? 'Пополнение' : 'Снятие'))}<div class="m">${new Date(o.date).toLocaleDateString('ru-RU')}</div></div>
-      <b class="${o.amount > 0 ? 'inc' : ''}">${o.amount > 0 ? '+' : '−'}${o.cur === 'CNY' ? n2(Math.abs(o.orig)) + ' CNY' : o.cur && o.cur !== 'SAR' ? n2(Math.abs(o.orig)) + ' ' + o.cur + ' <span class="m">(' + fmt(Math.abs(o.amount)) + ')</span>' : fmt(Math.abs(o.amount))}</b><button class="del" data-dop="${o.id}">×</button></div>`).join('') || '<p class="mut">Операций нет</p>') +
+      <b class="${o.amount > 0 ? 'inc' : ''}">${o.amount > 0 ? '+' : '−'}${o.cur === 'LOT' ? n2(Math.abs(o.orig)) + ' лот.' : o.cur === 'CNY' ? n2(Math.abs(o.orig)) + ' CNY' : o.cur && o.cur !== 'SAR' ? n2(Math.abs(o.orig)) + ' ' + o.cur + ' <span class="m">(' + fmt(Math.abs(o.amount)) + ')</span>' : fmt(Math.abs(o.amount))}</b><button class="del" data-dop="${o.id}">×</button></div>`).join('') || '<p class="mut">Операций нет</p>') +
     `<div class="grid2"><button class="btn ghost" data-ren="${f.id}">Переименовать / цель</button><button class="btn ghost" style="color:var(--bad);border-color:var(--bad)" data-delf="${f.id}">Удалить копилку</button></div>`;
 }
 
@@ -99,27 +131,36 @@ function move(id, sign) {
   box.style.cssText = 'position:fixed;inset:0;background:#0007;z-index:20;display:flex;align-items:flex-end';
   box.innerHTML = `<div class="card" style="width:100%;margin:0;border-radius:16px 16px 0 0;padding-bottom:calc(16px + env(safe-area-inset-bottom))">
     <h3>${sign > 0 ? 'Пополнить' : 'Снять из'} «${esc(f.name)}»</h3>
-    <div style="display:flex;gap:8px"><input id="m-v" type="number" inputmode="decimal" placeholder="${unitOf(f) === 'CNY' ? 'Сколько юаней' : 'Сумма'}" style="flex:1">${unitOf(f) === 'CNY' ? '<select id="m-c" style="width:auto"><option>CNY</option></select>' : curSel('m-c')}</div>
+    <div style="display:flex;gap:8px"><input id="m-v" type="number" inputmode="decimal" placeholder="${unitOf(f) === 'CNY' ? 'Сколько юаней' : unitOf(f) === 'SEC' ? 'Сколько лотов' : 'Сумма'}" style="flex:1">${unitOf(f) === 'CNY' ? '<select id="m-c" style="width:auto"><option>CNY</option></select>' : unitOf(f) === 'SEC' ? '<select id="m-c" style="width:auto"><option value="LOT">лотов</option></select>' : curSel('m-c')}</div>
     <input id="m-n" placeholder="Комментарий (необязательно)">
-    ${sign > 0 ? `<label class="mut" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="m-cash" ${unitOf(f) === 'CNY' ? '' : 'checked'} style="width:auto;margin:0"> из снятого кэша</label>` : ''}
+    ${sign > 0 ? `<label class="mut" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="m-cash" ${unitOf(f) ? '' : 'checked'} style="width:auto;margin:0"> из снятого кэша</label>` : ''}
     <div class="m" id="m-eq"></div>
     <button class="btn" id="m-ok">${sign > 0 ? 'Пополнить' : 'Снять'}</button><button class="btn ghost" id="m-x">Отмена</button></div>`;
   document.body.appendChild(box);
   const q = s => box.querySelector(s);
-  const eq = () => { const v = parseFloat(q('#m-v').value) || 0, c = q('#m-c').value; q('#m-eq').textContent = v ? '= ' + tri(toSar(v, c)) : ''; };
+  const eq = () => { const v = parseFloat(q('#m-v').value) || 0, c = q('#m-c').value; q('#m-eq').textContent = v ? '= ' + tri(c === 'LOT' ? v * (f.lot || 1) * ((S.prices[f.ticker] || {}).p || 0) * S.rates.RUB : toSar(v, c)) : ''; };
   q('#m-v').oninput = q('#m-c').onchange = eq; q('#m-v').focus();
   q('#m-x').onclick = () => box.remove();
   box.onclick = e => { if (e.target === box) box.remove(); };
   q('#m-ok').onclick = () => {
     const v = parseFloat(String(q('#m-v').value).replace(',', '.')), cur = q('#m-c').value;
     if (!(v > 0)) return q('#m-v').focus();
-    f.ops.push({ id: uid(), date: new Date().toISOString(), amount: sign * Math.round(toSar(v, cur) * 100) / 100, orig: sign * v, cur, note: q('#m-n').value.trim(), cash: sign > 0 ? q('#m-cash').checked : undefined });
+    const sar = cur === 'LOT' ? v * (f.lot || 1) * ((S.prices[f.ticker] || {}).p || 0) * S.rates.RUB : toSar(v, cur);
+    f.ops.push({ id: uid(), date: new Date().toISOString(), amount: sign * Math.round(sar * 100) / 100, orig: sign * v, cur, note: q('#m-n').value.trim(), cash: sign > 0 ? q('#m-cash').checked : undefined });
     box.remove(); save(); renderSav(); if (window.renderCash) renderCash();
   };
 }
 
-$('v-add').onclick = () => {
+$('v-add').onclick = async () => {
   const name = $('v-name').value.trim(); if (!name) return alert('Название копилки');
+  if ($('v-type').value === 'sec') {
+    toast('Ищу на Мосбирже…');
+    const r = await findTicker(name);
+    if (!r) return alert('Не нашёл на Мосбирже. Впишите тикер, например SBHI');
+    if (!confirm(`Это «${r.name}» (${r.ticker})?`)) return;
+    S.sav.push({ id: uid(), name, goal: 0, ops: [], unit: 'SEC', ticker: r.ticker, board: r.board, lot: 1 }); save();
+    $('v-name').value = ''; $('v-type').value = 'money'; refreshPrices(); renderSav(); return;
+  }
   const goal = Math.round(toSar(parseFloat($('v-goal').value) || 0, $('v-gcur').value) * 100) / 100;   // the goal is kept in SAR
   S.sav.push({ id: uid(), name, goal, ops: [] }); save();
   if (/юан|cny|yuan/i.test(name)) refreshCny();
