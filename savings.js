@@ -166,7 +166,8 @@ $('v-add').onclick = async () => {
   if (/юан|cny|yuan/i.test(name)) refreshCny();
   $('v-name').value = $('v-goal').value = ''; $('v-gcur').value = 'SAR'; renderSav();
 };
-document.getElementById('t-sav').onclick = e => {
+// only the savings half of the tab: the family cards use the same data-ren / data-delf names
+$('c-sav').onclick = e => {
   if (e.target.dataset.cnyrate) {
     const a = prompt('1 CNY = … RUB (курс из Т-Инвестиций). Пусто — курс Мосбиржи', S.rates.manualCnyRub || n2(cnyRub()).replace(/\s/g, ''));
     if (a === null) return;

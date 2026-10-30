@@ -75,6 +75,7 @@ const KNOWN = [
   [/pharmacy|nahdi|al-dawaa|dawaa|hospital|clinic|dental|medical/i, 'Здоровье'],
   [/aldrees|sasco|petromin|naft|fuel|petrol|bapco|adnoc|enoc/i, 'Топливо'],
   [/netflix|spotify|apple\.com|icloud|google|youtube|shahid|osn|disney|chatgpt|openai/i, 'Подписки'],
+  [/parking|mawgif|\bpark(?:ing)? ?(?:fee|lot)/i, 'Транспорт'],   // before entertainment: «PARKING» is not a theme park
   [/cinema|vox|muvi|theme|park|bowling|game/i, 'Развлечения'],
   [/gym|fitness|sport/i, 'Спорт'],
 ];
@@ -578,9 +579,10 @@ $('cat-list').onclick = e => {
   save(); renderSet(); render();
 };
 $('rule-list').onclick = e => { const i = e.target.dataset.dr; if (i != null) { S.rules.splice(+i, 1); save(); renderSet(); } };
-$('cur').onchange = () => { S.cur = $('cur').value.trim() || '₽'; save(); render(); };
+$('cur').onchange = () => { S.cur = $('cur').value.trim() || '₽'; save(); render(); if (window.renderSav) renderSav(); if (window.renderCash) renderCash(); };
 $('only-known').onchange = () => { S.onlyKnown = $('only-known').checked; save(); };
-$('wipe').onclick = () => { if (confirm('Удалить ВСЕ операции, источники и правила?') && confirm('Точно?')) { S = Object.assign({}, DEF, { tx: [] , sources: [], rules: [] }); save(); renderSet(); render(); } };
+// a wipe empties everything (loans, family, savings too) and reloads: the other modules keep their own references otherwise
+$('wipe').onclick = () => { if (confirm('Удалить ВСЕ операции, источники и правила?') && confirm('Точно?')) { try { localStorage.removeItem(KEY); } catch (e) {} location.reload(); } };
 
 /* ---------- toast ---------- */
 function toast(msg) {
@@ -631,4 +633,4 @@ window.addEventListener('hashchange', intake);
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js');
 renderSet(); render();
 window.addEventListener('load', intake);   // after scan.js (review) has loaded
-window.addEventListener('resize', render);
+window.addEventListener('resize', () => render());   // the wrapped render (cards.js redraws the credit block too)

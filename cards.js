@@ -57,7 +57,7 @@ function renderCredit() {
   box.innerHTML = '<h3>Кредитки к погашению</h3>' + cards.map(c => {
     const p = cardMonth(c.name, prev, cur), m = cardMonth(c.name, cur, next);
     // the bank's own statement wins: amount due minus what was paid since it was issued
-    const st = S.tx.filter(t => isInfo(t) && (t.payTo || t.source) === c.name).sort((x, y) => y.date.localeCompare(x.date))[0];
+    const st = S.tx.filter(t => t.kind === 'statement' && (t.payTo || t.source) === c.name).sort((x, y) => y.date.localeCompare(x.date))[0];   // a hold or a code is not a statement
     const stPaid = st ? paidTo(c.name, new Date(+new Date(st.date) - 3 * 864e5), new Date(8.64e15)) : 0;
     const left = st ? Math.max(0, st.amount - stPaid) : Math.max(0, p.spent - p.back - p.paid - m.paid);
     const stLine = st ? `<div class="m">🧾 счёт банка: ${fmt(st.amount)}${st.due ? ', оплатить до ' + new Date(st.due + 'T12:00').toLocaleDateString('ru-RU') : ''} · внесено ${fmt(stPaid)}</div>` : '';
