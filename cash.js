@@ -17,6 +17,8 @@ const cashPerLabel = () => ({ salary: salaryDate() ? 'с последней за
 const sinceStart = t => new Date(t.date) >= cashStart();
 const cashIn = () => S.tx.filter(t => t.kind === 'cash' && sinceStart(t)).reduce((s, t) => s + t.amount, 0);
 const famDay = t => new Date(t.given || t.date);
+// entries made before this rule sat on the 1st of their month: move them to the day they were given
+S.tx.forEach(t => { if (t.origin === 'cash' && t.category === 'Семья' && t.given && t.date !== t.given) { t.date = t.given; save(); } });
 const famIn = t => famDay(t) >= cashStart();
 const monthLabel = ym => { const [y, m] = ym.split('-').map(Number); return new Date(y, m - 1, 1).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }); };
 const forMonth = t => t.forMonth || t.date.slice(0, 7);
@@ -24,6 +26,8 @@ const toFamily = () => S.tx.filter(t => t.origin === 'cash' && t.category === '�
 const spentMe = () => S.tx.filter(t => t.origin === 'cash' && t.category !== 'Семья' && sinceStart(t)).reduce((s, t) => s + t.amount, 0);
 // money lent from cash: not spending — it is expected back; a returned loan is cash in hand again
 S.loans = S.loans || [];
+// repair: an earlier re-read wiped the loan mark off transfers lent from the bank
+S.loans.forEach(l => { const t = l.txId && S.tx.find(x => x.id === l.txId); if (t && t.kind !== 'loan') { t.kind = 'loan'; t.category = 'В долг'; save(); } });
 const lent = () => S.loans.filter(l => !l.txId && new Date(l.date) >= cashStart()).reduce((s, l) => s + l.amount, 0);
 const returned = () => S.loans.filter(l => !l.txId && l.back && new Date(l.back) >= cashStart()).reduce((s, l) => s + l.amount, 0);
 const toSavings = () => S.sav.reduce((s, f) => s + f.ops.filter(o => o.amount > 0 && o.cash !== false && new Date(o.date) >= cashStart()).reduce((a, o) => a + o.amount, 0), 0);
@@ -153,10 +157,11 @@ function famSheet(m, t) {
   q('#g-ok').onclick = () => {
     const v = parseFloat(String(q('#g-v').value).replace(',', '.')); if (!(v > 0)) return q('#g-v').focus();
     const ym = q('#g-m').value, [y, mo] = ym.split('-').map(Number), date = new Date(y, mo - 1, 1, 12).toISOString();
-    if (t) Object.assign(t, { amount: v, forMonth: ym, date, note: q('#g-n').value.trim() });
+    if (t) Object.assign(t, { amount: v, forMonth: ym, date: t.given || date, note: q('#g-n').value.trim() });
     // money entered for a past month is history: it does not touch the current cash period
     const curYM = new Date().toISOString().slice(0, 7);
-    if (!t) S.tx.push({ id: uid(), date, forMonth: ym, given: ym < curYM ? undefined : new Date().toISOString(), amount: v, source: 'Кэш', category: 'Семья', merchant: m.name, note: q('#g-n').value.trim(), origin: 'cash', income: false });
+    const given = ym < curYM ? undefined : new Date().toISOString();
+    if (!t) S.tx.push({ id: uid(), date: given || date, forMonth: ym, given, amount: v, source: 'Кэш', category: 'Семья', merchant: m.name, note: q('#g-n').value.trim(), origin: 'cash', income: false });
     box.remove(); save(); renderCash(); render();
   };
 }
@@ -229,3 +234,4 @@ $('c-fam').onclick = e => {
 };
 document.querySelector('nav').addEventListener('click', e => { const b = e.target.closest('button'); if (b && b.dataset.t === 'sav') renderCash(); });
 renderCash();
+render();   // statistics again, after the loan / family repairs above
