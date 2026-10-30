@@ -79,7 +79,7 @@ function review(list, skipped = []) {
   const seen = new Set();
   pend = list.filter(t => { const k = t.amount + '|' + t.date.slice(0, 16); if (seen.has(k)) return false; seen.add(k); return true; })
     // a code-only purchase is dropped when the real purchase SMS (same amount, within a day) is there too
-    .filter(t => t.kind !== 'otp' || !list.concat(S.tx).some(x => x !== t && x.kind !== 'otp' && !x.income && !isXfer(x) && Math.abs(x.amount) === t.amount && Math.abs(new Date(x.date) - new Date(t.date)) < 864e5))
+    .filter(t => t.kind !== 'otp' || !list.concat(S.tx).some(x => sameBuy(t, x)))
     .map(t => ({ t, use: true }));
   const already = pend.filter(p => isDup(p.t)).length;
   pend = pend.filter(p => !isDup(p.t));

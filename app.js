@@ -201,6 +201,10 @@ function parseSms(text, from = '') {
   };
 }
 
+// the real purchase behind a confirmation code: same card, within a day, the same amount or that amount plus fees (≤ 6 %)
+const sameBuy = (code, x) => x !== code && x.kind !== 'otp' && x.note !== 'по коду подтверждения' && !x.income && !isXfer(x)
+  && x.source.split(' ')[0] === code.source.split(' ')[0] && Math.abs(new Date(x.date) - new Date(code.date)) < 864e5
+  && x.amount >= code.amount - 0.01 && x.amount <= code.amount * 1.06;
 const isDup = t => S.tx.some(x => x.h === t.h || (x.origin === 'sms' && x.amount === t.amount && x.date.slice(0, 16) === t.date.slice(0, 16)));
 
 function askCard() {

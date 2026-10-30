@@ -27,6 +27,10 @@ const spentMe = () => S.tx.filter(t => t.origin === 'cash' && t.category !== 'С
 // money lent from cash: not spending — it is expected back; a returned loan is cash in hand again
 S.loans = S.loans || [];
 // repair: an earlier re-read wiped the loan mark off transfers lent from the bank
+// repair: a purchase saved from its confirmation code while the real purchase SMS (with fees) is also saved
+{ const codes = S.tx.filter(t => t.note === 'по коду подтверждения');
+  const twins = codes.filter(c => S.tx.some(x => sameBuy(c, x)));
+  if (twins.length) { S.tx = S.tx.filter(t => !twins.includes(t)); save(); setTimeout(() => toast('Убраны двойные записи: ' + twins.length), 800); } }
 S.loans.forEach(l => { const t = l.txId && S.tx.find(x => x.id === l.txId); if (t && t.kind !== 'loan') { t.kind = 'loan'; t.category = 'В долг'; save(); } });
 const lent = () => S.loans.filter(l => !l.txId && new Date(l.date) >= cashStart()).reduce((s, l) => s + l.amount, 0);
 const returned = () => S.loans.filter(l => !l.txId && l.back && new Date(l.back) >= cashStart()).reduce((s, l) => s + l.amount, 0);
