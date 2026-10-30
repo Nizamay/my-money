@@ -25,7 +25,8 @@ const returned = () => S.loans.filter(l => !l.txId && l.back && new Date(l.back)
 const toSavings = () => S.sav.reduce((s, f) => s + f.ops.filter(o => o.amount > 0 && o.cash !== false && new Date(o.date) >= cashStart()).reduce((a, o) => a + o.amount, 0), 0);
 
 function renderCash() {
-  const got = cashIn(), sav = toSavings(), fam = toFamily(), me = spentMe(), ln = lent(), rt = returned(), left = got + rt - sav - fam - me - ln;
+  const got = cashIn(), sav = toSavings(), fam = toFamily(), me = spentMe();
+  const db = debitBalance(), owed = S.loans.filter(l => !l.back).reduce((s, l) => s + l.amount, 0);
   const salDate = cashStart().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
   const per = S.cashPer || 'salary';
   $('c-top').innerHTML = `<div class="seg" id="c-per" style="margin-bottom:8px">${[['salary', 'С зарплаты'], ['month', 'Месяц'], ['3m', '3 мес'], ['all', 'Всё']]
@@ -36,8 +37,9 @@ function renderCash() {
     <div class="row"><span>🏦 В накопления</span><span>${fmt(sav)}</span></div>
     <div class="row"><span>👨‍👩‍👧 Семье</span><span>${fmt(fam)}</span></div>
     <div class="row"><span>🧍 Потратил сам</span><span>${fmt(me)}</span></div>
-    <div class="row"><b>На руках, не распределено</b><b style="color:var(--acc)">${fmt(Math.max(0, left))}</b></div>
-    ${left < -0.005 ? `<div class="m" style="color:#b45309">⚠️ Распределено на ${fmt(-left)} больше, чем снято за период: часть денег, видимо, из прошлого периода или не из снятого кэша. Выберите период шире или отметьте пополнение копилки как «не из снятого кэша».</div>` : ''}
+    <div class="row"><span>💳 Остаток на дебетовой карте<div class="m">${db.how}</div></span><span>${db.v == null ? '—' : fmt(db.v)} <button class="del" style="color:var(--acc);font-size:13px" id="c-bal">✎</button></span></div>
+    <div class="row"><span>🤝 Дал в долг</span><span>${fmt(owed)}</span></div>
+    <div class="row"><b>Не распределено</b><b style="color:var(--acc)">${db.v == null ? '—' : fmt(db.v + owed)}</b></div>
     <div class="grid2"><button class="btn ghost" id="c-wd">＋ Снял кэш</button><button class="btn ghost" id="c-me">🧍 Потратил сам</button></div>`;
 
   // debts live with the savings: the money is still mine
@@ -100,6 +102,26 @@ function loanSheet() {
   };
 }
 
+// debit balance: the last balance the bank reported in an SMS (or the one the user typed), moved by every
+// debit operation after it — spending and withdrawals down, income and refunds up; holds, codes and bills ignored
+function debitBalance() {
+  const deb = new Set(S.sources.filter(s => s.type === 'debit').map(s => s.name));
+  // a card payoff paid from the debit account may be filed under the credit card it paid — it still left the debit account
+  const debKeys = S.sources.filter(s => s.type === 'debit').flatMap(s => s.key.split('|')).map(k => k.trim()).filter(k => /^\d{3,}$/.test(k));
+  const fromDebit = t => isXfer(t) && t.raw && debKeys.some(k => t.raw.includes(k));
+  const mine = S.tx.filter(t => (deb.has(t.source) || fromDebit(t)) && t.kind !== 'hold' && t.kind !== 'otp' && t.kind !== 'statement');
+  const smsAnchor = mine.filter(t => t.bal != null).sort((a, b) => b.date.localeCompare(a.date))[0];
+  const man = S.debitAnchor;
+  let v, from, how;
+  if (man && (!smsAnchor || man.date >= smsAnchor.date)) { v = man.v; from = man.date; how = 'сверено вами ' + new Date(man.date).toLocaleDateString('ru-RU'); }
+  else if (smsAnchor) { v = smsAnchor.bal; from = smsAnchor.date; how = 'по SMS от ' + new Date(smsAnchor.date).toLocaleDateString('ru-RU'); }
+  else return { v: null, how: 'банк не пишет остаток в SMS — нажмите ✎ и впишите' };
+  mine.filter(t => t.date > from).forEach(t => { if (!t.loanBack) v += t.income ? t.amount : -t.amount; });
+  // a debt marked «Вернули» comes back onto the debit card
+  S.loans.filter(l => l.back && l.back > from).forEach(l => { v += l.amount; });
+  return { v: Math.round(v * 100) / 100, how };
+}
+
 const askSum = q => { const v = parseFloat(String(prompt(q) || '').replace(',', '.').replace(/\s/g, '')); return v > 0 ? v : 0; };
 const cashTx = (amount, category, merchant, note) => {
   S.tx.push({ id: uid(), date: new Date().toISOString(), amount, source: 'Кэш', category, merchant, note, origin: 'cash', income: false });
@@ -113,6 +135,12 @@ $('c-seg').onclick = e => {
   $('c-fam').style.display = b.dataset.c === 'fam' ? '' : 'none';
 };
 $('v-loans').onclick = $('c-top').onclick = e => {
+  if (e.target.id === 'c-bal') {
+    const a = prompt('Сколько сейчас на дебетовой карте (SAR)? Посмотрите в приложении банка. Пусто — считать по SMS');
+    if (a === null) return;
+    const v = parseFloat(a.replace(',', '.').replace(/[^\d.-]/g, ''));
+    S.debitAnchor = isFinite(v) && a.trim() ? { v, date: new Date().toISOString() } : null; save(); renderCash(); return;
+  }
   if (e.target.dataset.per) { S.cashPer = e.target.dataset.per; save(); renderCash(); return; }
   if (e.target.id === 'c-wd') {   // a withdrawal the bank sent no SMS about
     const v = askSum('Сколько сняли наличными?'); if (!v) return;
@@ -120,7 +148,12 @@ $('v-loans').onclick = $('c-top').onclick = e => {
     save(); renderCash(); render();
   }
   if (e.target.id === 'c-loan') return loanSheet();
-  if (e.target.dataset.back) { const l = S.loans.find(x => x.id === e.target.dataset.back); if (confirm(`${l.who} вернул(а) ${fmt(l.amount)}?`)) { l.back = new Date().toISOString(); save(); renderCash(); renderSav(); } return; }
+  if (e.target.dataset.back) { const l = S.loans.find(x => x.id === e.target.dataset.back); if (confirm(`${l.who} вернул(а) ${fmt(l.amount)}? Сумма прибавится к остатку на дебетовой карте.`)) {
+    l.back = new Date().toISOString();
+    const inc = S.tx.find(t => t.income && Math.abs(t.amount - l.amount) < 0.01 && Math.abs(new Date(t.date) - new Date(l.back)) < 3 * 864e5);
+    if (inc) inc.loanBack = l.id;
+    save(); renderCash(); renderSav();
+  } return; }
   if (e.target.dataset.dloan) {
     if (!confirm('Удалить запись о долге?')) return;
     const l = S.loans.find(x => x.id === e.target.dataset.dloan), t = l && l.txId && S.tx.find(x => x.id === l.txId);

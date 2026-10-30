@@ -46,7 +46,7 @@ svg text{fill:var(--mut);font-size:10px}
 </style>
 </head>
 <body>
-<header>Мои деньги <small style="font-size:11px;color:var(--mut);font-weight:400">v37</small></header>
+<header>Мои деньги <small style="font-size:11px;color:var(--mut);font-weight:400">v38</small></header>
 <main>
 
 <!-- ===== STATS ===== -->
@@ -119,6 +119,7 @@ svg text{fill:var(--mut);font-size:10px}
 <!-- ===== SAVINGS ===== -->
 <section class="tab" id="t-sav">
   <div class="card" id="c-top"></div>
+  <div class="card" id="v-loans"></div>
   <div class="seg" id="c-seg" style="margin:6px 0"><button data-c="sav" class="on">🏦 Накопления</button><button data-c="fam">👨‍👩‍👧 Семья</button></div>
   <div id="c-fam" style="display:none">
     <div class="card"><h3>Семья</h3><p class="mut">Кому отдаю кэш. Эти деньги считаются тратами (категория «Семья»).</p><div id="f-list"></div>
@@ -132,7 +133,6 @@ svg text{fill:var(--mut);font-size:10px}
     <div class="legend" id="v-legend"></div>
   </div>
   <div class="card"><h3>Копилки</h3><div id="v-list"></div></div>
-  <div class="card" id="v-loans"></div>
   <div class="card">
     <h3>Новая копилка</h3>
     <div class="grid2"><input id="v-name" placeholder="Подушка безопасности"><div style="display:flex;gap:6px"><input id="v-goal" type="number" inputmode="decimal" placeholder="Цель" style="flex:1"><select id="v-gcur" style="width:auto"><option selected>SAR</option><option>USD</option><option>RUB</option></select></div></div>
@@ -213,11 +213,11 @@ svg text{fill:var(--mut);font-size:10px}
   <button data-t="set"><span>⚙️</span>Настройки</button>
 </nav>
 
-<script src="app.js?v=37"></script>
-<script src="scan.js?v=37"></script>
-<script src="savings.js?v=37"></script>
-<script src="cards.js?v=37"></script>
-<script src="backup.js?v=37"></script>
-<script src="cash.js?v=37"></script>
+<script src="app.js?v=38"></script>
+<script src="scan.js?v=38"></script>
+<script src="savings.js?v=38"></script>
+<script src="cards.js?v=38"></script>
+<script src="backup.js?v=38"></script>
+<script src="cash.js?v=38"></script>
 </body>
 </html>

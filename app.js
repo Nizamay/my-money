@@ -103,6 +103,8 @@ function parseSms(text, from = '') {
   const otp = OTP.test(raw) && /(?:^|\s)at\s*:/i.test(raw) && /amount/i.test(raw) && !/violation/i.test(raw);
   if (!raw || (OTP.test(raw) && !otp) || !otp && NOT_TX.test(raw) && !/(покупк|оплат|списан|purchase|payment|شراء|دفع)/i.test(raw)) return null;
   // drop the balance figure (anb puts "Balance:" mid-message, before Total amount / At / On)
+  const balM = raw.match(new RegExp(CUT.source + '[^\\d\\n]{0,15}' + NUM, 'i'));
+  const bal = balM ? toNum(balM[2], balM[3]) : undefined;
   const body = raw.replace(new RegExp(CUT.source + '[^\\d\\n]{0,15}' + NUM + '(?:\\s?' + CUR + ')?', 'gi'), ' ')
     // card / account / IBAN / invoice numbers are never amounts ("VISA Card:7982", "From:0012", "(2276)")
     .replace(/(card|iban|account|acc(?:\s*no)?|invoice number|from|to|بطاقة|حساب|карта|счет|счёт)\s*:?\s*[*x\d][*x\d ]*/gi, '$1 ')
@@ -193,7 +195,7 @@ function parseSms(text, from = '') {
       : /withdraw|\batm\b|cash withdrawal|سحب|صراف|снятие налич|банкомат/i.test(body) ? 'Наличные'
       : HOLD.test(merchant) ? 'Блокировка (pending)' : guessCat(merchant) || (src && src.cat) || 'Без категории',
     kind: otp ? 'otp' : HOLD.test(merchant) ? 'hold' : !INCOME.test(body) && CASH.test(body) ? 'cash' : undefined,
-    note, income: !PAYOFF.test(body) && !REFUND.test(body) && INCOME.test(body), transfer: PAYOFF.test(body), origin: 'sms', raw, h: hash(raw)
+    note, income: !PAYOFF.test(body) && !REFUND.test(body) && INCOME.test(body), transfer: PAYOFF.test(body), origin: 'sms', raw, h: hash(raw), bal
   };
 }
 
