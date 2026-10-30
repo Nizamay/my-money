@@ -379,7 +379,34 @@ seg('sort', 'o', v => { st.sort = v; });   // operations: newest / oldest first,
 $('prev').onclick = () => { st.offset--; st.fBucket = null; render(); };
 $('next').onclick = () => { st.offset++; st.fBucket = null; render(); };
 $('bars').onclick = e => { const k = e.target.dataset.b; if (k) { st.fBucket = st.fBucket === k ? null : k; render(); } };
-$('donut').onclick = $('legend').onclick = e => { const el = e.target.closest('[data-k]'); if (el) { st.fKey = st.fKey === el.dataset.k ? null : el.dataset.k; render(); } };
+let pressed = false;   // a long press opened the editor: the click that follows must not filter
+$('donut').onclick = $('legend').onclick = e => { if (pressed) { pressed = false; return; } const el = e.target.closest('[data-k]'); if (el) { st.fKey = st.fKey === el.dataset.k ? null : el.dataset.k; render(); } };
+
+// long press on a category in the legend: rename it and change its icon (operations, rules and own list follow)
+function editCat(name) {
+  const n = (prompt('Название категории', name) || '').trim(); if (!n) return;
+  const icon = (prompt('Иконка (эмодзи)', catIcon(name)) || catIcon(name)).trim();
+  S.cats = S.cats || [];
+  S.tx.forEach(t => { if (t.category === name) t.category = n; });
+  S.rules.forEach(r => { if (r.cat === name) r.cat = n; });
+  S.sources.forEach(x => { if (x.cat === name) x.cat = n; });
+  const own = S.cats.find(c => c.name === name);
+  if (own) { own.name = n; own.icon = icon; }
+  else if (S.cats.some(c => c.name === n)) S.cats.find(c => c.name === n).icon = icon;
+  else S.cats.push({ name: n, icon });   // a standard category gets an override with the new icon
+  if (st.fKey === name) st.fKey = n;
+  save(); render(); renderSet();
+}
+let pressT = null;
+$('legend').addEventListener('touchstart', e => {
+  const el = e.target.closest('[data-k]'); if (!el || st.split !== 'category') return;
+  pressT = setTimeout(() => { pressed = true; editCat(el.dataset.k); }, 600);
+}, { passive: true });
+['touchend', 'touchmove', 'touchcancel'].forEach(ev => $('legend').addEventListener(ev, () => clearTimeout(pressT), { passive: true }));
+$('legend').addEventListener('contextmenu', e => {   // right click / long press on desktop
+  const el = e.target.closest('[data-k]'); if (!el || st.split !== 'category') return;
+  e.preventDefault(); editCat(el.dataset.k);
+});
 $('filters').onclick = e => { const c = e.target.dataset.clr; if (c === 'b') st.fBucket = null; if (c === 'k') st.fKey = null; render(); };
 $('list').onclick = e => { const id = e.target.dataset.del; if (id && confirm('Удалить операцию?')) { S.tx = S.tx.filter(t => t.id !== id); save(); render(); } };
 $('list').onchange = e => {
