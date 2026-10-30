@@ -101,7 +101,7 @@ function renderSav() {
       ${unitOf(f) === 'SEC' ? `<div class="m"><b>${n2(units(f))} лот.</b> ${f.ticker} · пай ${S.prices[f.ticker] ? n2(S.prices[f.ticker].p) + ' RUB (Мосбиржа, ' + new Date(S.prices[f.ticker].t).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) + ')' : '— цена ещё не загружена'}</div>` : ''}
       ${unitOf(f) === 'CNY' ? `<div class="m">1 CNY = ${n2(cnyRub())} RUB ${S.rates.manualCnyRub ? '(ваш курс)' : S.rates.cnyT ? '(Мосбиржа, ' + new Date(S.rates.cnyT).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) + ')' : '(примерно)'} <button class="del" style="color:var(--acc);font-size:13px" data-cnyrate="1">изменить</button></div>` : ''}
       ${f.goal ? `<div style="height:5px;background:var(--line);border-radius:3px;margin-top:4px"><div style="width:${pct}%;height:5px;background:var(--acc);border-radius:3px"></div></div>` : ''}</div>
-      <button class="del" style="color:#16a34a" data-plus="${f.id}">＋</button><button class="del" data-minus="${f.id}">－</button></div>`;
+      <button class="del" style="color:#16a34a" data-plus="${f.id}">＋</button><button class="del" data-minus="${f.id}">－</button><button class="del" style="color:var(--mut);font-size:15px" data-delf="${f.id}" title="удалить копилку">🗑</button></div>`;
   }).join('') : '<p class="mut">Создайте первую копилку ниже</p>';
 
   const f = funds.find(x => x.id === openFund);
