@@ -323,7 +323,7 @@ function render() {
   $('filters').innerHTML = f;
   const list = S.tx.filter(t => { const dd = new Date(t.date); return dd >= a && dd < b; })
     .filter(t => inBucket(t) && keyHit(t))
-    .sort((x, y) => y.date.localeCompare(x.date)).slice(0, 300);
+    .sort(st.sort === 'sum' ? (x, y) => Math.abs(y.amount) - Math.abs(x.amount) : st.sort === 'old' ? (x, y) => x.date.localeCompare(y.date) : (x, y) => y.date.localeCompare(x.date)).slice(0, 300);
   $('list').innerHTML = list.length ? list.map(t => `<div class="row"><div><div>${catIcon(t.category)} ${esc(t.merchant || t.note || t.category)}</div>
     <div class="m">${new Date(t.date).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ${esc(t.source)}${t.merchant && t.note ? " · " + esc(t.note) : ""} ·
     <select data-cat="${t.id}" style="width:auto;padding:2px;margin:0;font-size:12px">${catOptions(t.category)}</select></div></div>
@@ -375,6 +375,7 @@ seg('period', 'p', v => { st.period = v; st.offset = 0; st.fBucket = null; st.gr
   $('group').querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset.g === st.group)); });
 seg('group', 'g', v => { st.group = v; st.fBucket = null; });
 seg('split', 's', v => { st.split = v; st.fKey = null; });
+seg('sort', 'o', v => { st.sort = v; });   // operations: newest / oldest first, or biggest amount first
 $('prev').onclick = () => { st.offset--; st.fBucket = null; render(); };
 $('next').onclick = () => { st.offset++; st.fBucket = null; render(); };
 $('bars').onclick = e => { const k = e.target.dataset.b; if (k) { st.fBucket = st.fBucket === k ? null : k; render(); } };
