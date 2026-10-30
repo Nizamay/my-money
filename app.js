@@ -272,7 +272,8 @@ function render() {
 
   // bars
   const keys = buckets(a, b), byB = {}; keys.forEach(k => byB[k] = 0);
-  const inKey = t => !st.fKey || t[st.split] === st.fKey;
+  const keyHit = t => !st.fKey || (st.fKey === 'Прочее' && st.rest ? st.rest.includes(t[st.split]) : t[st.split] === st.fKey);
+  const inKey = keyHit;
   inP.filter(inKey).forEach(t => { const k = bucketOf(new Date(t.date)); if (k in byB) byB[k] += t.amount; });
   const svg = $('bars'), W = svg.clientWidth || 340, H = 180, pad = 18;
   const max = Math.max(1, ...Object.values(byB)), bw = (W - 4) / Math.max(1, keys.length);
@@ -299,7 +300,8 @@ function render() {
   const inBucket = t => !st.fBucket || bucketOf(new Date(t.date)) === st.fBucket;
   const groups = {}; inP.filter(inBucket).forEach(t => groups[t[st.split]] = (groups[t[st.split]] || 0) + t.amount);
   let arr = Object.entries(groups).filter(x => x[1] > 0).sort((x, y) => y[1] - x[1]);
-  if (arr.length > 9) { const rest = arr.slice(9).reduce((s, x) => s + x[1], 0); arr = arr.slice(0, 9).concat([['Прочее', rest]]); }
+  st.rest = null;
+  if (arr.length > 9) { st.rest = arr.slice(9).map(x => x[0]); const rest = arr.slice(9).reduce((s, x) => s + x[1], 0); arr = arr.slice(0, 9).concat([['Прочее', rest]]); }
   const total = arr.reduce((s, x) => s + x[1], 0);
   let ang = -Math.PI / 2, d = '';
   arr.forEach(([k, v], i) => {
@@ -317,10 +319,10 @@ function render() {
   // list
   let f = '';
   if (st.fBucket) f += `<span class="chip" data-clr="b">${st.fBucket} ✕</span>`;
-  if (st.fKey) f += `<span class="chip" data-clr="k">${esc(st.fKey)} ✕</span>`;
+  if (st.fKey) f += `<span class="chip" data-clr="k">${esc(st.fKey === 'Прочее' && st.rest ? 'Прочее: ' + st.rest.join(', ') : st.fKey)} ✕</span>`;
   $('filters').innerHTML = f;
   const list = S.tx.filter(t => { const dd = new Date(t.date); return dd >= a && dd < b; })
-    .filter(t => inBucket(t) && (!st.fKey || t[st.split] === st.fKey))
+    .filter(t => inBucket(t) && keyHit(t))
     .sort((x, y) => y.date.localeCompare(x.date)).slice(0, 300);
   $('list').innerHTML = list.length ? list.map(t => `<div class="row"><div><div>${catIcon(t.category)} ${esc(t.merchant || t.note || t.category)}</div>
     <div class="m">${new Date(t.date).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ${esc(t.source)}${t.merchant && t.note ? " · " + esc(t.note) : ""} ·
