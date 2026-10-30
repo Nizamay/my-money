@@ -12,7 +12,7 @@ applyManual();
 const SAV_CUR = ['SAR', 'USD', 'RUB'];
 const toSar = (v, c) => c === 'SAR' ? v : v * S.rates[c];
 const fromSar = (v, c) => c === 'SAR' ? v : v / S.rates[c];
-const n2 = v => (Math.round(v * 100) / 100).toLocaleString('ru-RU', { maximumFractionDigits: v >= 1000 ? 0 : 2 });
+const n2 = v => S.hide ? HIDE : (Math.round(v * 100) / 100).toLocaleString('ru-RU', { maximumFractionDigits: v >= 1000 ? 0 : 2 });
 const tri = v => SAV_CUR.map(c => n2(fromSar(v, c)) + ' ' + c).join(' · ');
 function refreshRates() {
   if (S.rates.manualUsdRub) return;

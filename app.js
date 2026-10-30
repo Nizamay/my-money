@@ -36,7 +36,9 @@ const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch
 const $ = id => document.getElementById(id);
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const fmt = n => (Math.round(n * 100) / 100).toLocaleString('ru-RU', { maximumFractionDigits: 2 }) + ' ' + S.cur;
+// «Скрыть суммы»: every amount on screen becomes •••• (for showing the app to others)
+const HIDE = '••••';
+const fmt = n => S.hide ? HIDE + ' ' + S.cur : (Math.round(n * 100) / 100).toLocaleString('ru-RU', { maximumFractionDigits: 2 }) + ' ' + S.cur;
 const ymd = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 const hash = s => { let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33 ^ s.charCodeAt(i)) >>> 0; return h.toString(36); };
 
@@ -477,16 +479,24 @@ function renderPull() {
   S.sources.forEach(s => { (by[scName(s.name)] = by[scName(s.name)] || []).push(s.name); });
   $('pull').innerHTML = Object.entries(by).map(([sc, names]) =>
     `<button data-pull="${esc(sc)}">⟳ ${esc(names.length > 1 ? bankOf(names[0]) : names[0])}</button>`).join('')
-    + '<button data-paste="1" title="Вставить SMS из буфера">📋</button><button data-reload="1" title="Обновить приложение">↻</button>';
+    + '<button data-paste="1" title="Вставить SMS из буфера">📋</button><button data-hide="1" title="Скрыть суммы">' + (S.hide ? '🙈' : '👁') + '</button><button data-reload="1" title="Обновить приложение">↻</button>';
 }
 $('pull').onclick = e => {
   const b = e.target.closest('button'); if (!b) return;
   if (b.dataset.reload) return location.reload();
   if (b.dataset.paste) return pasteIntake();
+  if (b.dataset.hide) return toggleHide();
   location.href = 'shortcuts://run-shortcut?name=' + encodeURIComponent(b.dataset.pull);
 };
 
+function toggleHide() {
+  S.hide = !S.hide; save();
+  renderSet(); render(); if (window.renderSav) renderSav(); if (window.renderCash) renderCash();
+  toast(S.hide ? 'Суммы скрыты' : 'Суммы видны');
+}
+
 function renderSet() {
+  $('hide-btn').textContent = S.hide ? '🙈 Суммы скрыты — показать' : '👁 Скрыть суммы';
   renderPull();
   $('cat-list').innerHTML = (S.cats || []).map((c, i) => `<div class="row"><span>${c.icon} ${esc(c.name)}</span><button class="del" data-dc="${i}">×</button></div>`).join('') || '<p class="mut">Своих категорий нет</p>';
   // each bank shows what its Shortcut must be called and the exact Text line to paste into it
