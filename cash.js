@@ -36,15 +36,18 @@ function renderCash() {
     <div class="row"><span>🏦 В накопления</span><span>${fmt(sav)}</span></div>
     <div class="row"><span>👨‍👩‍👧 Семье</span><span>${fmt(fam)}</span></div>
     <div class="row"><span>🧍 Потратил сам</span><span>${fmt(me)}</span></div>
-    <div class="row"><span>🤝 Дал в долг</span><span>${fmt(ln)}${rt ? ` <span class="m">(вернули ${fmt(rt)})</span>` : ''}</span></div>
     <div class="row"><b>На руках, не распределено</b><b style="color:var(--acc)">${fmt(Math.max(0, left))}</b></div>
     ${left < -0.005 ? `<div class="m" style="color:#b45309">⚠️ Распределено на ${fmt(-left)} больше, чем снято за период: часть денег, видимо, из прошлого периода или не из снятого кэша. Выберите период шире или отметьте пополнение копилки как «не из снятого кэша».</div>` : ''}
-    <div class="grid2"><button class="btn ghost" id="c-wd">＋ Снял кэш</button><button class="btn ghost" id="c-me">🧍 Потратил сам</button></div>
-    <button class="btn ghost" id="c-loan">🤝 Дал в долг</button>
-    ${S.loans.filter(l => !l.back).length ? '<h3 style="margin-top:12px">Мне должны</h3>' + S.loans.filter(l => !l.back).map(l =>
+    <div class="grid2"><button class="btn ghost" id="c-wd">＋ Снял кэш</button><button class="btn ghost" id="c-me">🧍 Потратил сам</button></div>`;
+
+  // debts live with the savings: the money is still mine
+  const open = S.loans.filter(l => !l.back);
+  $('v-loans').innerHTML = `<h3>🤝 Мне должны</h3>` + (open.map(l =>
       `<div class="row"><div>${esc(l.who)}<div class="m">${new Date(l.date).toLocaleDateString('ru-RU')} · ${l.txId ? '🏦 банковский перевод' : '💵 кэш'}</div></div><b>${fmt(l.amount)}</b>
        <button class="btn" style="width:auto;padding:6px 12px;margin:0" data-back="${l.id}">Вернули</button><button class="del" data-dloan="${l.id}">×</button></div>`).join('')
-      + `<div class="m">Всего должны: ${fmt(S.loans.filter(l => !l.back).reduce((s, l) => s + l.amount, 0))}</div>` : ''}`;
+    || '<p class="mut">Никто не должен</p>')
+    + (open.length ? `<div class="m">Всего должны: ${fmt(open.reduce((s, l) => s + l.amount, 0))}</div>` : '')
+    + '<button class="btn ghost" id="c-loan">🤝 Дал в долг</button>';
 
   // family members with what each got in this period
   $('f-list').innerHTML = S.family.map(m => {
@@ -93,7 +96,7 @@ function loanSheet() {
       t.kind = 'loan'; t.category = 'В долг';
       S.loans.push({ id: uid(), who, amount: t.amount, date: t.date, back: null, txId: t.id });
     }
-    box.remove(); save(); renderCash(); render();
+    box.remove(); save(); renderCash(); renderSav(); render();
   };
 }
 
@@ -109,7 +112,7 @@ $('c-seg').onclick = e => {
   $('c-sav').style.display = b.dataset.c === 'sav' ? '' : 'none';
   $('c-fam').style.display = b.dataset.c === 'fam' ? '' : 'none';
 };
-$('c-top').onclick = e => {
+$('v-loans').onclick = $('c-top').onclick = e => {
   if (e.target.dataset.per) { S.cashPer = e.target.dataset.per; save(); renderCash(); return; }
   if (e.target.id === 'c-wd') {   // a withdrawal the bank sent no SMS about
     const v = askSum('Сколько сняли наличными?'); if (!v) return;
@@ -117,12 +120,12 @@ $('c-top').onclick = e => {
     save(); renderCash(); render();
   }
   if (e.target.id === 'c-loan') return loanSheet();
-  if (e.target.dataset.back) { const l = S.loans.find(x => x.id === e.target.dataset.back); if (confirm(`${l.who} вернул(а) ${fmt(l.amount)}?`)) { l.back = new Date().toISOString(); save(); renderCash(); } return; }
+  if (e.target.dataset.back) { const l = S.loans.find(x => x.id === e.target.dataset.back); if (confirm(`${l.who} вернул(а) ${fmt(l.amount)}?`)) { l.back = new Date().toISOString(); save(); renderCash(); renderSav(); } return; }
   if (e.target.dataset.dloan) {
     if (!confirm('Удалить запись о долге?')) return;
     const l = S.loans.find(x => x.id === e.target.dataset.dloan), t = l && l.txId && S.tx.find(x => x.id === l.txId);
     if (t) { delete t.kind; t.category = 'Переводы'; }   // the transfer becomes an ordinary transfer again
-    S.loans = S.loans.filter(x => x !== l); save(); renderCash(); render(); return;
+    S.loans = S.loans.filter(x => x !== l); save(); renderCash(); renderSav(); render(); return;
   }
   if (e.target.id === 'c-me') {
     const v = askSum('Сколько потратили из кэша?'); if (!v) return;

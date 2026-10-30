@@ -26,14 +26,15 @@ function refreshRates() {
 if (Date.now() - S.rates.t > 6 * 36e5) refreshRates();
 
 function renderSav() {
-  const funds = S.sav, total = funds.reduce((s, f) => s + bal(f), 0);
+  const owed = (S.loans || []).filter(l => !l.back).reduce((s, l) => s + l.amount, 0);   // lent money counts as savings
+  const funds = S.sav, total = funds.reduce((s, f) => s + bal(f), 0) + owed;
   $('v-total').innerHTML = SAV_CUR.map(c => `<div>${n2(fromSar(total, c))} ${c}</div>`).join('')
     + `<small class="mut" style="font-weight:400">1 USD = ${n2(S.rates.USD)} SAR · <b>1 USD = ${n2(S.rates.USD / S.rates.RUB)} RUB</b>
        ${S.rates.manualUsdRub ? '· ваш курс' : S.rates.t ? '· рыночный от ' + new Date(S.rates.t).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '· примерный'}
        <button class="del" style="color:var(--acc);font-size:13px" id="v-rate">изменить курс</button></small>`;
 
   // share of each fund
-  const arr = funds.map((f, i) => [f, bal(f), COLORS[i % COLORS.length]]).filter(x => x[1] > 0);
+  const arr = funds.map((f, i) => [f, bal(f), COLORS[i % COLORS.length]]).concat(owed ? [[{ id: 'loans', name: '🤝 Мне должны' }, owed, '#a855f7']] : []).filter(x => x[1] > 0);
   const sum = arr.reduce((s, x) => s + x[1], 0);
   let ang = -Math.PI / 2, d = '';
   const p = (r, t) => (100 + r * Math.cos(t)).toFixed(2) + ' ' + (100 + r * Math.sin(t)).toFixed(2);
