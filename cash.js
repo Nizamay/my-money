@@ -59,14 +59,18 @@ function renderCash() {
   $('f-list').innerHTML = S.family.map(m => {
     const got = S.tx.filter(t => t.origin === 'cash' && t.category === 'Семья' && t.merchant === m.name && famIn(t)).reduce((s, t) => s + t.amount, 0);
     return `<div class="row"><span data-m="${m.id}" style="cursor:pointer">${esc(m.name)}<div class="m">с зарплаты: ${fmt(got)}</div></span>
-      <button class="btn" style="width:auto;padding:6px 14px;margin:0" data-give="${m.id}">Дать</button></div>`;
+      <button class="btn" style="width:auto;padding:6px 14px;margin:0" data-give="${m.id}">Дать</button>
+      <button class="del" style="color:var(--acc)" data-m="${m.id}" title="суммы">✎</button><button class="del" data-delm="${m.id}" title="удалить">×</button></div>
+      ${openMember === m.id ? '<div id="f-inline"></div>' : ''}`;
   }).join('') || '<p class="mut">Добавьте членов семьи</p>';
   const m = S.family.find(x => x.id === openMember);
   $('f-hist').style.display = m ? '' : 'none';
   if (m) $('f-hist').innerHTML = `<h3>${esc(m.name)} — история</h3>` + (S.tx.filter(t => t.origin === 'cash' && t.category === 'Семья' && t.merchant === m.name)
     .sort((a, b) => forMonth(b).localeCompare(forMonth(a)) || b.date.localeCompare(a.date)).map(t => `<div class="row"><div>на ${monthLabel(forMonth(t))}<div class="m">${esc(t.note || 'кэш')}${t.given ? ' · дал ' + new Date(t.given).toLocaleDateString('ru-RU') : ''}</div></div>
       <b>${fmt(t.amount)}</b><button class="del" style="color:var(--acc)" data-etx="${t.id}">✎</button><button class="del" data-dtx="${t.id}">×</button></div>`).join('') || '<p class="mut">Пока ничего</p>')
-    + `<button class="btn ghost" style="color:var(--bad);border-color:var(--bad)" data-delm="${m.id}">Удалить из списка</button>`;
+    + `<button class="btn ghost" data-ren="${m.id}">Переименовать</button>`;
+  // shown right under the member (the #f-list rows are rebuilt each time, so the html is copied, not moved)
+  if (m && $('f-inline')) { $('f-inline').innerHTML = $('f-hist').innerHTML; $('f-inline').className = 'card'; $('f-inline').style.margin = '6px 0 10px'; $('f-hist').style.display = 'none'; }
 }
 
 // «Дал в долг»: from cash, or one of my bank transfers (it then stops counting as spending)
@@ -213,7 +217,15 @@ $('c-fam').onclick = e => {
   else if (ds.m || e.target.closest('[data-m]')) { const id = ds.m || e.target.closest('[data-m]').dataset.m; openMember = openMember === id ? null : id; renderCash(); }
   else if (ds.etx) { const t = S.tx.find(x => x.id === ds.etx); if (t) famSheet(S.family.find(x => x.name === t.merchant) || { name: t.merchant }, t); }
   else if (ds.dtx) { if (confirm('Удалить запись?')) { S.tx = S.tx.filter(t => t.id !== ds.dtx); save(); renderCash(); render(); } }
-  else if (ds.delm) { if (confirm('Убрать из списка? История останется в операциях.')) { S.family = S.family.filter(x => x.id !== ds.delm); openMember = null; save(); renderCash(); } }
+  else if (ds.delm) {
+    const m = S.family.find(x => x.id === ds.delm); if (!m) return;
+    if (!confirm(`Удалить «${m.name}» из списка?`)) return;
+    const mine = S.tx.filter(t => t.origin === 'cash' && t.category === 'Семья' && t.merchant === m.name);
+    if (mine.length && confirm(`Удалить и все записи «${m.name}» (${mine.length})? Отмена — записи останутся в тратах.`)) S.tx = S.tx.filter(t => !mine.includes(t));
+    S.family = S.family.filter(x => x !== m); openMember = null; save(); renderCash(); render();
+  }
+  else if (ds.ren) { const m = S.family.find(x => x.id === ds.ren); const n = (prompt('Новое название', m.name) || '').trim(); if (n && n !== m.name) {
+    S.tx.forEach(t => { if (t.origin === 'cash' && t.category === 'Семья' && t.merchant === m.name) t.merchant = n; }); m.name = n; save(); renderCash(); render(); } }
 };
 document.querySelector('nav').addEventListener('click', e => { const b = e.target.closest('button'); if (b && b.dataset.t === 'sav') renderCash(); });
 renderCash();
