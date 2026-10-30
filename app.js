@@ -279,13 +279,19 @@ function render() {
   const keyHit = t => !st.fKey || (st.fKey === 'Прочее' && st.rest ? st.rest.includes(t[st.split]) : t[st.split] === st.fKey);
   const inKey = keyHit;
   inP.filter(inKey).forEach(t => { const k = bucketOf(new Date(t.date)); if (k in byB) byB[k] += t.amount; });
-  const svg = $('bars'), W = svg.clientWidth || 340, H = 180, pad = 18;
-  const max = Math.max(1, ...Object.values(byB)), bw = (W - 4) / Math.max(1, keys.length);
-  let h = '';
+  // income rises above the zero line in green, spending hangs below it in red
+  const incIn = S.tx.filter(t => t.income && !isXfer(t) && !isInfo(t) && new Date(t.date) >= a && new Date(t.date) < b).filter(inKey);
+  const incB = {}; keys.forEach(k => incB[k] = 0);
+  incIn.forEach(t => { const k = bucketOf(new Date(t.date)); if (k in incB) incB[k] += t.amount; });
+  const svg = $('bars'), W = svg.clientWidth || 340, H = 180, pad = 18, top = 12, span = H - pad - top;
+  const maxE = Math.max(0, ...Object.values(byB)), maxI = Math.max(0, ...Object.values(incB));
+  const max = Math.max(1, maxE + maxI), y0 = top + span * maxI / max, bw = (W - 4) / Math.max(1, keys.length);
+  let h = `<line x1="0" x2="${W}" y1="${y0}" y2="${y0}" stroke="#9ca3af" stroke-width="1"/>`;
   keys.forEach((k, i) => {
-    const v = byB[k], bh = (H - pad - 8) * Math.max(0, v) / max, x = 2 + i * bw;
+    const v = byB[k], bh = span * Math.max(0, v) / max, x = 2 + i * bw, ih = span * incB[k] / max;
     const on = st.fBucket === k, dim = st.fBucket && !on;
-    h += `<rect data-b="${k}" x="${x + bw * .12}" y="${H - pad - bh}" width="${Math.max(1, bw * .76)}" height="${Math.max(bh, v ? 1 : 0)}" rx="2" fill="${dim ? '#9ca3af55' : 'var(--acc)'}"/>`;
+    if (incB[k]) h += `<rect data-b="${k}" x="${x + bw * .12}" y="${y0 - Math.max(ih, 1)}" width="${Math.max(1, bw * .76)}" height="${Math.max(ih, 1)}" rx="2" fill="${dim ? '#9ca3af55' : '#16a34a'}"/>`;
+    h += `<rect data-b="${k}" x="${x + bw * .12}" y="${y0}" width="${Math.max(1, bw * .76)}" height="${Math.max(bh, v ? 1 : 0)}" rx="2" fill="${dim ? '#9ca3af55' : '#dc2626'}"/>`;
     h += `<rect data-b="${k}" x="${x}" y="0" width="${bw}" height="${H}" fill="transparent"/>`;
     const step = Math.ceil(keys.length / 8);
     if (i % step === 0) {
@@ -293,12 +299,16 @@ function render() {
       h += `<text x="${x + bw / 2}" y="${H - 4}" text-anchor="middle">${lab}</text>`;
     }
   });
-  h += `<text x="${W - 2}" y="10" text-anchor="end">${fmt(max)}</text>`;
+  if (maxI) h += `<text x="${W - 2}" y="10" text-anchor="end">+${fmt(maxI)}</text>`;
+  if (maxE) h += `<text x="${W - 2}" y="${H - pad - 2}" text-anchor="end">−${fmt(maxE)}</text>`;
   svg.innerHTML = h;
   const tot = inP.filter(inKey).reduce((s, t) => s + t.amount, 0);
   const nB = keys.length || 1;
-  const incP = S.tx.filter(t => t.income && !isXfer(t) && !isInfo(t) && new Date(t.date) >= a && new Date(t.date) < b).reduce((s, t) => s + t.amount, 0);
-  $('ptotal').textContent = `Расходы: ${fmt(tot)} · доходы: +${fmt(incP)} · в среднем ${fmt(tot / nB)} за ${{ day: 'день', week: 'неделю', month: 'месяц' }[st.group]}` + (st.fBucket ? ` · выбрано: ${fmt(byB[st.fBucket] || 0)}` : '');
+  // a picked bar: totals of that bar only
+  const incP = (st.fBucket ? incB[st.fBucket] : incIn.reduce((s, t) => s + t.amount, 0)) || 0;
+  const expP = (st.fBucket ? byB[st.fBucket] : tot) || 0, bal = incP - expP;
+  $('ptotal').innerHTML = `Доход: <b style="color:#16a34a">+${fmt(incP)}</b> · расход: <b style="color:#dc2626">−${fmt(expP)}</b> · баланс: <b style="color:${bal >= 0 ? '#16a34a' : '#dc2626'}">${bal >= 0 ? '+' : '−'}${fmt(Math.abs(bal))}</b>`
+    + `<div class="m">в среднем расход ${fmt(tot / nB)} за ${{ day: 'день', week: 'неделю', month: 'месяц' }[st.group]}${st.fBucket ? ' · выбран ' + st.fBucket : ''}</div>`;
 
   // donut
   const inBucket = t => !st.fBucket || bucketOf(new Date(t.date)) === st.fBucket;
