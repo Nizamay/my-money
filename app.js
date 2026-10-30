@@ -93,6 +93,7 @@ const PAYOFF = /(credit card:?\s*(?:payment|credited)|credit card[^\n]{0,60}\n?[
 const NOT_TX = /(код|code|пароль|password|не сообщайте)/i;
 const OTP = /(violation has been issued|otp|one time password|одноразов|رمز التحقق|رمز|كلمة المرور|logged in)/i;
 const CUT = /(баланс|остаток|доступно|дост\.|balance|avl|available|ост\.|бал\.|الرصيد|رصيد|المتاح)/i;
+const FX = { AED: 1.02, BHD: 9.95, QAR: 1.03, KWD: 12.2, OMR: 9.74, USD: 3.75, EUR: 4.1, GBP: 4.9, EGP: 0.077, TRY: 0.11, RUB: 0.047, JOD: 5.29 };
 const toNum = (a, b) => parseFloat(a.replace(/[ ,  ]/g, '') + (b ? '.' + b : ''));
 const latinDigits = s => s.replace(/[٠-٩]/g, c => c.charCodeAt(0) - 0x660).replace(/[۰-۹]/g, c => c.charCodeAt(0) - 0x6f0).replace(/٫/g, '.').replace(/٬/g, ',');
 
@@ -112,6 +113,15 @@ function parseSms(text, from = '') {
     amount = toNum(m[1], m[2]);
     const f = body.match(new RegExp('(?:amount[:\\s]*|\\sfor\\s+)([A-Z]{3})\\s?' + NUM, 'i'));
     if (f && !/^sar$/i.test(f[1])) note = f[1].toUpperCase() + ' ' + toNum(f[2], f[3]);
+  }
+  // a foreign amount with no SAR total: SAR = foreign × exchange rate + fees (never the fee alone, never the foreign figure as SAR)
+  if (amount == null && (m = body.match(new RegExp('amount[:\\s]*(?!sar\\b)([A-Z]{3})\\s?' + NUM, 'i')))) {
+    const fx = toNum(m[2], m[3]), cur = m[1].toUpperCase();
+    const rate = (body.match(/exchange rate[:\s]*([\d.]+)/i) || [])[1];
+    const fee = (body.match(new RegExp('fees?(?: and vat)?[:\\s]*(?:' + CUR + '[:\\s]*)?' + NUM, 'i')) || []);
+    if (rate) { amount = Math.round((fx * parseFloat(rate) + (fee[1] ? toNum(fee[1], fee[2]) : 0)) * 100) / 100; note = cur + ' ' + fx + ' (по курсу ' + rate + ')'; }
+    else if (FX[cur]) { amount = Math.round(fx * FX[cur] * 100) / 100; note = cur + ' ' + fx + ' (≈ по курсу ' + FX[cur] + ')'; }
+    else { amount = fx; note = cur + ' ' + fx + ' (не SAR)'; }
   }
   // "Amount: SAR 45.00" / "مبلغ: 45 ريال" → amount next to a currency → keyword before a number
   const lab = new RegExp('(?:amount|amt|مبلغ|المبلغ|بمبلغ|сумма)(?:\\s+in)?[:\\s]*(?:' + CUR + '[:\\s]*)?' + NUM, 'i');
