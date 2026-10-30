@@ -58,7 +58,8 @@ const HOLD = /pending/i;
 // a confirmation code that names a shop ("OTP … Amount: SAR 2084 At: www.extra.com") may be the only trace of a purchase:
 // it is offered in the review unticked, never counted on its own
 const CASH = /withdraw|\batm\b|سحب|صراف|снятие налич|банкомат/i;
-const isInfo = t => t.kind === 'statement' || t.kind === 'hold' || t.kind === 'otp' || t.kind === 'cash';
+// a bank transfer marked as a loan is still my money (owed to me), so it is not spending either
+const isInfo = t => t.kind === 'statement' || t.kind === 'hold' || t.kind === 'otp' || t.kind === 'cash' || t.kind === 'loan';
 // well-known shops and services → a suggested category (the user's own rules always win)
 const KNOWN = [
   [/\bub(?:e)?r\b|careem|bolt|jeeny|taxi/i, 'Такси'],
@@ -332,7 +333,7 @@ function render() {
 const CATS = [['Продукты', '🛒'], ['Кафе и рестораны', '☕'], ['Доставка еды', '🍔'], ['Такси', '🚕'], ['Транспорт', '🚌'], ['Топливо', '⛽'],
   ['Авто', '🚗'], ['Дом', '🏠'], ['Коммунальные', '💡'], ['Интернет', '🌐'], ['Связь', '📱'], ['Здоровье', '💊'], ['Красота', '💇'],
   ['Одежда', '👕'], ['Покупки', '🛍️'], ['Развлечения', '🎬'], ['Спорт', '🏋️'], ['Путешествия', '✈️'], ['Образование', '🎓'],
-  ['Дети', '🧸'], ['Семья', '👨‍👩‍👧'], ['Подарки', '🎁'], ['Подписки', '🧾'], ['Страховка', '🛡️'], ['Штрафы', '🚨'], ['Госуслуги', '🏛️'], ['Переводы', '💸'], ['Наличные', '💵'],
+  ['Дети', '🧸'], ['Семья', '👨‍👩‍👧'], ['Подарки', '🎁'], ['Подписки', '🧾'], ['Страховка', '🛡️'], ['Штрафы', '🚨'], ['Госуслуги', '🏛️'], ['Переводы', '💸'], ['В долг', '🤝'], ['Наличные', '💵'],
   ['Погашение кредитки', '💳'], ['Счёт по кредитке', '🧾'], ['Блокировка (pending)', '⏳'], ['Зарплата', '💰'], ['Кешбэк', '🎉'], ['Поступления', '📥'], ['Без категории', '❓']];
 const catIcon = n => ((S.cats || []).find(c => c.name === n) || {}).icon || (CATS.find(c => c[0] === n) || [])[1] || '🏷️';
 const allCats = () => [...new Set(CATS.map(c => c[0]).concat((S.cats || []).map(c => c.name),

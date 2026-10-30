@@ -12,6 +12,7 @@ function reparseAll() {
     const r = parseSms(t.raw, t.source.split(' ')[0]); if (!r) return;
     const before = JSON.stringify([t.date, t.amount, t.merchant, t.kind, t.income, t.transfer]);
     Object.assign(t, { date: r.date, amount: r.amount, merchant: r.merchant, note: r.note || t.note, kind: r.kind, income: r.income, transfer: r.transfer, due: r.due });
+    if (t.kind === 'loan') return;   // a transfer the user marked as a loan stays a loan
     if (!t.category || t.category === 'Без категории' || isInfo(r) || isXfer(r)) t.category = r.category;
     if (isXfer(t) || isInfo(t)) t.payTo = t.payTo || cardFor(t);
     if (before !== JSON.stringify([t.date, t.amount, t.merchant, t.kind, t.income, t.transfer])) n++;

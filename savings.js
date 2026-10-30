@@ -4,21 +4,33 @@ S.sav = S.sav || [];
 const bal = f => f.ops.reduce((s, o) => s + o.amount, 0);   // kept in SAR; each op also remembers what was typed
 let openFund = null;
 
-// SAR per unit; USD is pegged, RUB refreshed once a day when online (falls back to the last known rate)
+// SAR per unit; USD is pegged. RUB: a USD→RUB rate the user typed (e.g. from Google) wins;
+// otherwise the market mid-rate, refreshed every 6 h when online (two sources, the last known one offline)
 S.rates = S.rates || { USD: 3.75, RUB: 0.047, t: 0 };
+const applyManual = () => { if (S.rates.manualUsdRub) S.rates.RUB = S.rates.USD / S.rates.manualUsdRub; };
+applyManual();
 const SAV_CUR = ['SAR', 'USD', 'RUB'];
 const toSar = (v, c) => c === 'SAR' ? v : v * S.rates[c];
 const fromSar = (v, c) => c === 'SAR' ? v : v / S.rates[c];
 const n2 = v => (Math.round(v * 100) / 100).toLocaleString('ru-RU', { maximumFractionDigits: v >= 1000 ? 0 : 2 });
 const tri = v => SAV_CUR.map(c => n2(fromSar(v, c)) + ' ' + c).join(' · ');
-if (Date.now() - S.rates.t > 864e5) fetch('https://open.er-api.com/v6/latest/SAR').then(r => r.json()).then(j => {
-  if (j && j.rates && j.rates.USD && j.rates.RUB) { S.rates = { USD: 1 / j.rates.USD, RUB: 1 / j.rates.RUB, t: Date.now() }; save(); renderSav(); }
-}).catch(() => {});
+function refreshRates() {
+  if (S.rates.manualUsdRub) return;
+  const set = (usdRub, src) => { if (!(usdRub > 1)) return false; S.rates = { USD: 3.75, RUB: 3.75 / usdRub, t: Date.now(), src }; save(); renderSav(); return true; };
+  fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json').then(r => r.json())
+    .then(j => set(j && j.usd && j.usd.rub, 'рыночный'))
+    .catch(() => false)
+    .then(ok => ok || fetch('https://open.er-api.com/v6/latest/USD').then(r => r.json()).then(j => set(j && j.rates && j.rates.RUB, 'рыночный')))
+    .catch(() => {});
+}
+if (Date.now() - S.rates.t > 6 * 36e5) refreshRates();
 
 function renderSav() {
   const funds = S.sav, total = funds.reduce((s, f) => s + bal(f), 0);
   $('v-total').innerHTML = SAV_CUR.map(c => `<div>${n2(fromSar(total, c))} ${c}</div>`).join('')
-    + `<small class="mut" style="font-weight:400">1 USD = ${n2(S.rates.USD)} SAR · 1 SAR = ${n2(1 / S.rates.RUB)} RUB${S.rates.t ? ' · курс от ' + new Date(S.rates.t).toLocaleDateString('ru-RU') : ' · примерный курс'}</small>`;
+    + `<small class="mut" style="font-weight:400">1 USD = ${n2(S.rates.USD)} SAR · <b>1 USD = ${n2(S.rates.USD / S.rates.RUB)} RUB</b>
+       ${S.rates.manualUsdRub ? '· ваш курс' : S.rates.t ? '· рыночный от ' + new Date(S.rates.t).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '· примерный'}
+       <button class="del" style="color:var(--acc);font-size:13px" id="v-rate">изменить курс</button></small>`;
 
   // share of each fund
   const arr = funds.map((f, i) => [f, bal(f), COLORS[i % COLORS.length]]).filter(x => x[1] > 0);
@@ -53,6 +65,17 @@ function renderSav() {
 
 // top-up / withdrawal sheet: amount, currency (SAR by default), comment
 const curSel = id => `<select id="${id}" style="width:auto">${SAV_CUR.map(c => `<option${c === 'SAR' ? ' selected' : ''}>${c}</option>`).join('')}</select>`;
+// «изменить курс»: type 1 USD = … RUB (as Google shows it); empty = back to the market rate
+document.addEventListener('click', e => {
+  if (e.target.id !== 'v-rate') return;
+  const cur = n2(S.rates.USD / S.rates.RUB).replace(/\s/g, '');
+  const a = prompt('1 USD = … RUB (впишите курс из Google). Пусто — снова рыночный курс', S.rates.manualUsdRub || cur);
+  if (a === null) return;
+  const v = parseFloat(a.replace(',', '.').replace(/[^\d.]/g, ''));
+  if (v > 1) { S.rates.manualUsdRub = v; applyManual(); } else { delete S.rates.manualUsdRub; S.rates.t = 0; refreshRates(); }
+  save(); renderSav();
+});
+
 function move(id, sign) {
   const f = S.sav.find(x => x.id === id); if (!f) return;
   const box = document.createElement('div');

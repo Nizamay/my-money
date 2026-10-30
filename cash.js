@@ -20,8 +20,8 @@ const toFamily = () => S.tx.filter(t => t.origin === 'cash' && t.category === '�
 const spentMe = () => S.tx.filter(t => t.origin === 'cash' && t.category !== 'Семья' && sinceStart(t)).reduce((s, t) => s + t.amount, 0);
 // money lent from cash: not spending — it is expected back; a returned loan is cash in hand again
 S.loans = S.loans || [];
-const lent = () => S.loans.filter(l => new Date(l.date) >= cashStart()).reduce((s, l) => s + l.amount, 0);
-const returned = () => S.loans.filter(l => l.back && new Date(l.back) >= cashStart()).reduce((s, l) => s + l.amount, 0);
+const lent = () => S.loans.filter(l => !l.txId && new Date(l.date) >= cashStart()).reduce((s, l) => s + l.amount, 0);
+const returned = () => S.loans.filter(l => !l.txId && l.back && new Date(l.back) >= cashStart()).reduce((s, l) => s + l.amount, 0);
 const toSavings = () => S.sav.reduce((s, f) => s + f.ops.filter(o => o.amount > 0 && o.cash !== false && new Date(o.date) >= cashStart()).reduce((a, o) => a + o.amount, 0), 0);
 
 function renderCash() {
@@ -41,7 +41,7 @@ function renderCash() {
     <div class="grid2"><button class="btn ghost" id="c-wd">＋ Снял кэш</button><button class="btn ghost" id="c-me">🧍 Потратил сам</button></div>
     <button class="btn ghost" id="c-loan">🤝 Дал в долг</button>
     ${S.loans.filter(l => !l.back).length ? '<h3 style="margin-top:12px">Мне должны</h3>' + S.loans.filter(l => !l.back).map(l =>
-      `<div class="row"><div>${esc(l.who)}<div class="m">${new Date(l.date).toLocaleDateString('ru-RU')}</div></div><b>${fmt(l.amount)}</b>
+      `<div class="row"><div>${esc(l.who)}<div class="m">${new Date(l.date).toLocaleDateString('ru-RU')} · ${l.txId ? '🏦 банковский перевод' : '💵 кэш'}</div></div><b>${fmt(l.amount)}</b>
        <button class="btn" style="width:auto;padding:6px 12px;margin:0" data-back="${l.id}">Вернули</button><button class="del" data-dloan="${l.id}">×</button></div>`).join('')
       + `<div class="m">Всего должны: ${fmt(S.loans.filter(l => !l.back).reduce((s, l) => s + l.amount, 0))}</div>` : ''}`;
 
@@ -55,8 +55,45 @@ function renderCash() {
   $('f-hist').style.display = m ? '' : 'none';
   if (m) $('f-hist').innerHTML = `<h3>${esc(m.name)} — история</h3>` + (S.tx.filter(t => t.origin === 'cash' && t.category === 'Семья' && t.merchant === m.name)
     .sort((a, b) => b.date.localeCompare(a.date)).map(t => `<div class="row"><div>${esc(t.note || 'кэш')}<div class="m">${new Date(t.date).toLocaleDateString('ru-RU')}</div></div>
-      <b>${fmt(t.amount)}</b><button class="del" data-dtx="${t.id}">×</button></div>`).join('') || '<p class="mut">Пока ничего</p>')
+      <b>${fmt(t.amount)}</b><button class="del" style="color:var(--acc)" data-etx="${t.id}">✎</button><button class="del" data-dtx="${t.id}">×</button></div>`).join('') || '<p class="mut">Пока ничего</p>')
     + `<button class="btn ghost" style="color:var(--bad);border-color:var(--bad)" data-delm="${m.id}">Удалить из списка</button>`;
+}
+
+// «Дал в долг»: from cash, or one of my bank transfers (it then stops counting as spending)
+function loanSheet() {
+  const linked = new Set(S.loans.map(l => l.txId).filter(Boolean));
+  const xs = S.tx.filter(t => !t.income && !linked.has(t.id) && (t.category === 'Переводы' || /transfer/i.test(t.raw || '')) && t.amount > 0)
+    .sort((a, b) => b.date.localeCompare(a.date)).slice(0, 30);
+  const box = document.createElement('div');
+  box.style.cssText = 'position:fixed;inset:0;background:#0007;z-index:20;display:flex;align-items:flex-end';
+  box.innerHTML = `<div class="card" style="width:100%;margin:0;border-radius:16px 16px 0 0;max-height:85vh;overflow:auto;padding-bottom:calc(16px + env(safe-area-inset-bottom))">
+    <h3>🤝 Дал в долг</h3>
+    <input id="l-who" placeholder="Кому">
+    <div class="seg" id="l-src"><button data-s="cash" class="on">💵 Из кэша</button><button data-s="bank">🏦 Банковский перевод</button></div>
+    <div id="l-cash"><input id="l-v" type="number" inputmode="decimal" placeholder="Сумма, SAR"></div>
+    <div id="l-bank" style="display:none"><p class="mut">Какой перевод — это долг?</p>${xs.map(t => `<label class="row" style="gap:8px"><input type="radio" name="l-tx" value="${t.id}" style="width:auto;margin:0">
+      <span style="flex:1">${esc(t.merchant || t.note || t.category)}<div class="m">${new Date(t.date).toLocaleDateString('ru-RU')} · ${esc(t.source)}</div></span><b>${fmt(t.amount)}</b></label>`).join('') || '<p class="mut">Переводов нет</p>'}</div>
+    <button class="btn" id="l-ok">Записать долг</button><button class="btn ghost" id="l-x">Отмена</button></div>`;
+  document.body.appendChild(box);
+  const q = s => box.querySelector(s); let src = 'cash';
+  q('#l-src').onclick = e => { const b = e.target.closest('button'); if (!b) return; src = b.dataset.s;
+    q('#l-src').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    q('#l-cash').style.display = src === 'cash' ? '' : 'none'; q('#l-bank').style.display = src === 'bank' ? '' : 'none'; };
+  q('#l-bank').onchange = () => { const t = S.tx.find(x => x.id === (box.querySelector('[name=l-tx]:checked') || {}).value); if (t && !q('#l-who').value) q('#l-who').value = t.merchant || ''; };
+  q('#l-x').onclick = () => box.remove();
+  box.onclick = e => { if (e.target === box) box.remove(); };
+  q('#l-ok').onclick = () => {
+    const who = q('#l-who').value.trim(); if (!who) return q('#l-who').focus();
+    if (src === 'cash') {
+      const v = parseFloat(String(q('#l-v').value).replace(',', '.')); if (!(v > 0)) return q('#l-v').focus();
+      S.loans.push({ id: uid(), who, amount: v, date: new Date().toISOString(), back: null });
+    } else {
+      const t = S.tx.find(x => x.id === (box.querySelector('[name=l-tx]:checked') || {}).value); if (!t) return;
+      t.kind = 'loan'; t.category = 'В долг';
+      S.loans.push({ id: uid(), who, amount: t.amount, date: t.date, back: null, txId: t.id });
+    }
+    box.remove(); save(); renderCash(); render();
+  };
 }
 
 const askSum = q => { const v = parseFloat(String(prompt(q) || '').replace(',', '.').replace(/\s/g, '')); return v > 0 ? v : 0; };
@@ -78,13 +115,14 @@ $('c-top').onclick = e => {
     S.tx.push({ id: uid(), date: new Date().toISOString(), amount: v, source: 'Кэш', category: 'Наличные', merchant: 'Снятие наличных', kind: 'cash', origin: 'manual', income: false });
     save(); renderCash(); render();
   }
-  if (e.target.id === 'c-loan') {
-    const v = askSum('Сколько дали в долг?'); if (!v) return;
-    const who = (prompt('Кому?') || '').trim(); if (!who) return;
-    S.loans.push({ id: uid(), who, amount: v, date: new Date().toISOString(), back: null }); save(); renderCash(); return;
-  }
+  if (e.target.id === 'c-loan') return loanSheet();
   if (e.target.dataset.back) { const l = S.loans.find(x => x.id === e.target.dataset.back); if (confirm(`${l.who} вернул(а) ${fmt(l.amount)}?`)) { l.back = new Date().toISOString(); save(); renderCash(); } return; }
-  if (e.target.dataset.dloan) { if (confirm('Удалить запись о долге?')) { S.loans = S.loans.filter(x => x.id !== e.target.dataset.dloan); save(); renderCash(); } return; }
+  if (e.target.dataset.dloan) {
+    if (!confirm('Удалить запись о долге?')) return;
+    const l = S.loans.find(x => x.id === e.target.dataset.dloan), t = l && l.txId && S.tx.find(x => x.id === l.txId);
+    if (t) { delete t.kind; t.category = 'Переводы'; }   // the transfer becomes an ordinary transfer again
+    S.loans = S.loans.filter(x => x !== l); save(); renderCash(); render(); return;
+  }
   if (e.target.id === 'c-me') {
     const v = askSum('Сколько потратили из кэша?'); if (!v) return;
     const cats = allCats().filter(c => !['Семья', 'Наличные', 'Зарплата', 'Кешбэк', 'Поступления', 'Погашение кредитки', 'Счёт по кредитке', 'Блокировка (pending)'].includes(c));
@@ -101,6 +139,15 @@ $('c-fam').onclick = e => {
   const ds = e.target.dataset;
   if (ds.give) { const m = S.family.find(x => x.id === ds.give); const v = askSum(`Сколько дали: ${m.name}?`); if (v) cashTx(v, 'Семья', m.name, prompt('На что? (необязательно)') || ''); }
   else if (ds.m || e.target.closest('[data-m]')) { const id = ds.m || e.target.closest('[data-m]').dataset.m; openMember = openMember === id ? null : id; renderCash(); }
+  else if (ds.etx) {
+    const t = S.tx.find(x => x.id === ds.etx); if (!t) return;
+    const v = parseFloat(String(prompt('Сумма', t.amount) || '').replace(',', '.')); if (!(v > 0)) return;
+    const note = prompt('На что', t.note || ''); if (note === null) return;
+    const dt = prompt('Дата (ДД.ММ.ГГГГ)', new Date(t.date).toLocaleDateString('ru-RU')); if (dt === null) return;
+    const m = dt.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+    t.amount = v; t.note = note.trim(); if (m) t.date = new Date(+m[3], m[2] - 1, +m[1], 12).toISOString();
+    save(); renderCash(); render();
+  }
   else if (ds.dtx) { if (confirm('Удалить запись?')) { S.tx = S.tx.filter(t => t.id !== ds.dtx); save(); renderCash(); render(); } }
   else if (ds.delm) { if (confirm('Убрать из списка? История останется в операциях.')) { S.family = S.family.filter(x => x.id !== ds.delm); openMember = null; save(); renderCash(); } }
 };
