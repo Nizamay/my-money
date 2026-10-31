@@ -2,7 +2,7 @@
 /* ---------- screenshots of SMS → text (OCR on the phone) → review → transactions ---------- */
 const OCR_LIB = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
 // a line that opens a new bank message
-const HEAD = /^(international\s+pos|pos purchase|online purchase|outgoing transfer|incoming transfer|credit transfer|bill payment|transaction reversal|purchase|one time password|otp code|reason:|you are successfully|dear customer|شراء|إيداع|تحويل)/i;
+const HEAD = /^(international\s+pos|pos purchase|online purchase|outgoing transfer|incoming transfer|credit transfer|fund transfer|bill payment|transaction reversal|purchase|one time password|otp code|reason:|you are successfully|dear customer|شراء|إيداع|تحويل)/i;
 // iOS chrome around the bubbles: clock, headers, day separators, input box
 const NOISE = /^(\d{1,2}:\d{2}|messages|see all|text message.*|.*in messages|today.*|yesterday.*|(mon|tues|wednes|thurs|fri|satur|sun)day.*|\d{1,2}\/\d{1,2}\/\d{4}|[<>©@®]+)$/i;
 
