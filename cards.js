@@ -4,19 +4,20 @@ const monthStart = (y, m) => new Date(y, m, 1);
 
 /* ---------- re-read saved SMS with the current parser: operations saved by an older version get
    the right time, amount, shop and kind; a category the user chose is kept ---------- */
-const PARSER_VER = 37;
+const PARSER_VER = 38;
 function reparseAll() {
   let n = 0;
   S.tx.forEach(t => {
     if (t.origin !== 'sms' || !t.raw) return;
     const r = parseSms(t.raw, t.source.split(' ')[0]); if (!r) return;
     const keep = t.kind === 'loan' ? { kind: 'loan', category: t.category } : null;   // a transfer the user marked as a loan stays a loan
-    const before = JSON.stringify([t.date, t.amount, t.merchant, t.kind, t.income, t.transfer]);
+    const before = JSON.stringify([t.date, t.amount, t.merchant, t.kind, t.income, t.transfer, t.source]);
     Object.assign(t, { date: r.date, amount: r.amount, merchant: r.merchant, note: r.note || t.note, kind: r.kind, income: r.income, transfer: r.transfer, due: r.due, bal: r.bal });
+    if (r.source !== t.source && S.sources.some(s => s.name === r.source)) t.source = r.source;   // a card added later takes its own SMS
     if (keep) { Object.assign(t, keep); return; }
     if (!t.category || t.category === 'Без категории' || isInfo(r) || isXfer(r)) t.category = r.category;
     if (isXfer(t) || isInfo(t)) t.payTo = t.payTo || cardFor(t);
-    if (before !== JSON.stringify([t.date, t.amount, t.merchant, t.kind, t.income, t.transfer])) n++;
+    if (before !== JSON.stringify([t.date, t.amount, t.merchant, t.kind, t.income, t.transfer, t.source])) n++;
   });
   S.parserVer = PARSER_VER; save();
   return n;

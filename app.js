@@ -179,7 +179,9 @@ function parseSms(text, from = '') {
   if (/^[*\d\s.,:-]+$/.test(merchant)) merchant = '';   // a masked account number or an amount is not a merchant
 
   const hay = (from + ' ' + raw).toLowerCase();
-  const src = S.sources.find(s => s.key.split('|').some(k => k.trim() && hay.includes(k.trim().toLowerCase())));
+  // a card's digits ("4001") beat the bank's word ("sab"): two cards of one bank are told apart by number
+  const src = S.sources.find(s => s.key.split('|').some(k => /^\d{3,}$/.test(k.trim()) && hay.includes(k.trim())))
+    || S.sources.find(s => s.key.split('|').some(k => k.trim() && hay.includes(k.trim().toLowerCase())));
   if (!src && S.onlyKnown) return null;
   const rule = S.rules.find(r => r.key.split('|').some(k => k.trim() && hay.includes(k.trim().toLowerCase())));
   if (STATEMENT.test(raw)) {
